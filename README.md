@@ -10,10 +10,10 @@ Open the PowerShell terminal and run the following command:
 
 Open the terminal and run the following command:
 
-    curl -sSL https://ikon.live/install.sh | bash
+    source <(curl -sSL https://ikon.live/install.sh)
 
 ## Linux
 
 Open the terminal and run the following command:
 
-    curl -sSL https://ikon.live/install.sh | bash
+    source <(curl -sSL https://ikon.live/install.sh)

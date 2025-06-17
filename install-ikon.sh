@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# curl -sSL https://ikon.live/install.sh | bash
+# source <(curl -sSL https://ikon.live/install.sh)
 
 set -e
 
@@ -8,8 +8,6 @@ RED='\033[0;31m'
 GREEN='\033[1;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
-
-echo "Checking pre-requisites for ikon tool installation..."
 
 get_dotnet_install_instructions() {
     if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -30,6 +28,8 @@ get_dotnet_install_instructions() {
         echo "Please install .NET SDK 8 from: https://dotnet.microsoft.com/en-us/download/dotnet/8.0"
     fi
 }
+
+echo "Checking pre-requisites for ikon tool installation..."
 
 # Check if dotnet is installed
 if ! command -v dotnet &> /dev/null; then
@@ -72,34 +72,44 @@ else
     SHELL_RC="$HOME/.bashrc"
 fi
 
-# Add to PATH for current session
-export PATH="$DOTNET_TOOLS_PATH:$PATH"
+PATH_ALREADY_CONFIGURED=false
+
+# Check if dotnet tools path is already in PATH
+if echo "$PATH" | grep -q "$DOTNET_TOOLS_PATH"; then
+    PATH_ALREADY_CONFIGURED=true
+else
+    export PATH="$DOTNET_TOOLS_PATH:$PATH"
+fi
 
 # Install ikon tool globally
 echo "Installing ikon tool..."
+
 if ! dotnet tool install IkonTool -g; then
     echo -e "${RED}Error: Failed to install ikon tool${NC}"
     exit 1
 fi
 
-# Add to shell configuration file for future sessions
-if ! grep -q "$DOTNET_TOOLS_PATH" "$SHELL_RC" 2>/dev/null; then
-    echo "export PATH=\"$DOTNET_TOOLS_PATH:\$PATH\"" >> "$SHELL_RC"
+# Add to shell configuration file for future sessions (only if not already in PATH or in the config)
+if [[ "$PATH_ALREADY_CONFIGURED" == "false" ]]; then
+    if ! grep -q "$DOTNET_TOOLS_PATH" "$SHELL_RC" 2>/dev/null; then
+        echo "Adding dotnet tools path $DOTNET_TOOLS_PATH to $SHELL_RC for future sessions"
+        echo "export PATH=\"$DOTNET_TOOLS_PATH:\$PATH\"" >> "$SHELL_RC"
+    fi
 fi
 
-# Check if ikon command is available
-if ! command -v ikon &> /dev/null; then
-    echo -e "${RED}Error: ikon command not found in PATH${NC}"
-    echo "Please restart your terminal and try again"
-    exit 1
-fi
-
-# Test ikon version command
+# Test ikon command
 echo "Testing ikon tool installation..."
 if ! ikon version; then
     echo -e "${RED}Error: ikon tool has not been installed correctly${NC}"
     exit 1
 fi
 
-echo -e "${GREEN}Installation completed successfully!${NC}"
-echo "Next step: Run 'ikon login' command to login to the backend"
+# Only show PATH instructions if not sourced and PATH wasn't already configured
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]] && [[ "$PATH_ALREADY_CONFIGURED" == "false" ]]; then
+    echo "To use ikon tool in this terminal session, run:"
+    echo -e "${YELLOW}export PATH=\"$DOTNET_TOOLS_PATH:\$PATH\"${NC}"
+    echo "Or restart your terminal to pick up the PATH changes automatically."
+fi
+
+echo "Next step, to login to the Ikon backend, run:"
+echo -e "${YELLOW}ikon login${NC}"
