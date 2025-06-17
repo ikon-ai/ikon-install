@@ -51,13 +51,6 @@ fi
 
 echo -e "${GREEN}.NET SDK $DOTNET_VERSION found${NC}"
 
-# Install ikon tool globally
-echo "Installing ikon tool..."
-if ! dotnet tool install IkonTool -g; then
-    echo -e "${RED}Error: Failed to install ikon tool${NC}"
-    exit 1
-fi
-
 # Determine the dotnet tools path
 if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS
@@ -81,6 +74,13 @@ fi
 
 # Add to PATH for current session
 export PATH="$DOTNET_TOOLS_PATH:$PATH"
+
+# Install ikon tool globally
+echo "Installing ikon tool..."
+if ! dotnet tool install IkonTool -g; then
+    echo -e "${RED}Error: Failed to install ikon tool${NC}"
+    exit 1
+fi
 
 # Add to shell configuration file for future sessions
 if ! grep -q "$DOTNET_TOOLS_PATH" "$SHELL_RC" 2>/dev/null; then
