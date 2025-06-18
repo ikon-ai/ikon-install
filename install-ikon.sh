@@ -79,6 +79,9 @@ else
     export PATH="$DOTNET_TOOLS_PATH:$PATH"
 fi
 
+# Silently uninstall old IkonTool package if it exists
+dotnet tool uninstall IkonTool -g >/dev/null 2>&1 || true
+
 # Install ikon tool globally
 echo "Installing ikon tool..."
 

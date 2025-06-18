@@ -29,11 +29,17 @@ if ($majorVersion -lt 8) {
 
 Write-Host ".NET SDK $dotnetVersion found" -ForegroundColor DarkGreen
 
+# Silently uninstall old IkonTool package if it exists
+try {
+    dotnet tool uninstall IkonTool -g 2>&1 | Out-Null
+} catch {
+}
+
 # Install ikon tool globally
 Write-Host "Installing ikon tool..."
 
 try {
-    dotnet tool install IkonTool -g
+    dotnet tool install ikon -g
     if ($LASTEXITCODE -ne 0) {
         throw "dotnet tool install failed with exit code $LASTEXITCODE"
     }
@@ -65,5 +71,5 @@ try {
     exit 1
 }
 
-Write-Host "Installation completed successfully!" -ForegroundColor DarkGreen
-Write-Host "Next step: Run 'ikon login' command to login to the backend"
+Write-Host "Next step, to login to the ikon backend, run:"
+Write-Host "ikon login" -ForegroundColor Yellow
