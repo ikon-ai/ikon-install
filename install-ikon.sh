@@ -27,6 +27,7 @@ get_dotnet_install_instructions() {
     else
         echo "Please install .NET SDK 8 from: https://dotnet.microsoft.com/en-us/download/dotnet/8.0"
     fi
+    echo "And then run this script again"
 }
 
 echo "Checking pre-requisites for ikon tool installation..."
@@ -55,10 +56,7 @@ echo -e "${GREEN}.NET SDK $DOTNET_VERSION found${NC}"
 if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS
     DOTNET_TOOLS_PATH="$HOME/.dotnet/tools"
-    SHELL_RC="$HOME/.zshrc"
-    if [ -f "$HOME/.bash_profile" ]; then
-        SHELL_RC="$HOME/.bash_profile"
-    fi
+    SHELL_RC="$HOME/.zprofile"
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
     # Linux
     DOTNET_TOOLS_PATH="$HOME/.dotnet/tools"
@@ -67,7 +65,7 @@ elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
         SHELL_RC="$HOME/.zshrc"
     fi
 else
-    echo -e "${YELLOW}Warning: Unknown OS type, using default path${NC}"
+    echo -e "${YELLOW}Warning: Unknown OS type, using default paths${NC}"
     DOTNET_TOOLS_PATH="$HOME/.dotnet/tools"
     SHELL_RC="$HOME/.bashrc"
 fi
@@ -84,7 +82,7 @@ fi
 # Install ikon tool globally
 echo "Installing ikon tool..."
 
-if ! dotnet tool install IkonTool -g; then
+if ! dotnet tool install ikon -g; then
     echo -e "${RED}Error: Failed to install ikon tool${NC}"
     exit 1
 fi
@@ -111,5 +109,5 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]] && [[ "$PATH_ALREADY_CONFIGURED" == "fals
     echo "Or restart your terminal to pick up the PATH changes automatically."
 fi
 
-echo "Next step, to login to the Ikon backend, run:"
+echo "Next step, to login to the ikon backend, run:"
 echo -e "${YELLOW}ikon login${NC}"
