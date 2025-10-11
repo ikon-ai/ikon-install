@@ -131,7 +131,6 @@ try {
     exit 1
 }
 
-# Test ikon version command
 Write-Host "Testing Ikon tool installation..."
 
 try {
@@ -143,6 +142,18 @@ try {
     Write-Host "Error: Ikon tool has not been installed correctly" -ForegroundColor Red
     Write-Host $_.Exception.Message
     exit 1
+}
+
+Write-Host "Trusting development certificates..."
+
+try {
+    dotnet dev-certs https --trust
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Warning: Failed to trust development certificates" -ForegroundColor Yellow
+    }
+} catch {
+    Write-Host "Warning: Failed to trust development certificates" -ForegroundColor Yellow
+    Write-Host $_.Exception.Message
 }
 
 Write-Host "Next step, to login to the Ikon backend, run:"

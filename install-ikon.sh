@@ -175,7 +175,6 @@ dotnet tool uninstall IkonTool -g >/dev/null 2>&1 || true
 
 # Install Ikon tool globally
 echo "Installing Ikon tool..."
-
 if ! dotnet tool install ikon -g; then
     echo -e "${RED}Error: Failed to install Ikon tool${NC}"
     script_exit 1
@@ -189,11 +188,15 @@ if [[ "$PATH_ALREADY_CONFIGURED" == "false" ]]; then
     fi
 fi
 
-# Test ikon command
 echo "Testing Ikon tool installation..."
 if ! ikon version; then
     echo -e "${RED}Error: Ikon tool has not been installed correctly${NC}"
     script_exit 1
+fi
+
+echo "Trusting development certificates..."
+if ! dotnet dev-certs https --trust; then
+    echo -e "${YELLOW}Warning: Failed to trust development certificates${NC}"
 fi
 
 echo "Next step, to login to the Ikon backend, run:"
