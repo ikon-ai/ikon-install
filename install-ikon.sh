@@ -194,9 +194,9 @@ if ! ikon version; then
     script_exit 1
 fi
 
-echo "Trusting development certificates..."
+echo "Trusting HTTPS development certificates for localhost..."
 if ! dotnet dev-certs https --trust; then
-    echo -e "${YELLOW}Warning: Failed to trust development certificates${NC}"
+    echo -e "${YELLOW}Warning: Failed to trust HTTPS development certificates${NC}"
 fi
 
 echo "Next step, to login to the Ikon backend, run:"

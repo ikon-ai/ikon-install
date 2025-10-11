@@ -8,7 +8,7 @@ $DOTNET_SDK_MAJOR = 8
 
 $dotnetSdkUrl = "https://builds.dotnet.microsoft.com/dotnet/Sdk/$DOTNET_SDK_VERSION/dotnet-sdk-$DOTNET_SDK_VERSION-win-x64.exe"
 
-Write-Host "Checking pre-requisites for ikon tool installation..."
+Write-Host "Checking pre-requisites for Ikon tool installation..."
 
 # Check if dotnet is installed
 try {
@@ -43,7 +43,8 @@ try {
                     }
                 } catch {
                     Write-Host "Please restart your terminal and run this script again to complete the Ikon tool installation." -ForegroundColor Yellow
-                    exit 0
+                    Read-Host "Press Enter to exit"
+                    return 0
                 }
             } else {
                 throw "winget install failed with exit code $LASTEXITCODE"
@@ -76,13 +77,14 @@ try {
                 }
             } catch {
                 Write-Host "Please restart your terminal and run this script again to complete the Ikon tool installation." -ForegroundColor Yellow
-                exit 0
+                Read-Host "Press Enter to exit"
+                return 0
             }
         } catch {
             Write-Host "Error: Failed to download or run the .NET SDK installer" -ForegroundColor Red
             Write-Host $_.Exception.Message
             Write-Host "Please manually download and install .NET SDK 8 from: $dotnetSdkUrl" -ForegroundColor Yellow
-            exit 1
+            return 1
         } finally {
             if (Test-Path $installerPath) {
                 Remove-Item $installerPath -ErrorAction SilentlyContinue
@@ -98,7 +100,7 @@ if ($majorVersion -lt $DOTNET_SDK_MAJOR) {
     Write-Host "Error: .NET SDK version $DOTNET_SDK_MAJOR or higher is required" -ForegroundColor Red
     Write-Host "Current version: $dotnetVersion"
     Write-Host "Please install the .NET SDK 8: $dotnetSdkUrl"
-    exit 1
+    return 1
 }
 
 Write-Host ".NET SDK $dotnetVersion found" -ForegroundColor DarkGreen
@@ -120,7 +122,7 @@ try {
 } catch {
     Write-Host "Error: Failed to install Ikon tool" -ForegroundColor Red
     Write-Host $_.Exception.Message
-    exit 1
+    return 1
 }
 
 try {
@@ -128,7 +130,7 @@ try {
 } catch {
     Write-Host "Error: ikon command not found in PATH" -ForegroundColor Red
     Write-Host "Please restart your terminal and try again"
-    exit 1
+    return 1
 }
 
 Write-Host "Testing Ikon tool installation..."
@@ -141,18 +143,18 @@ try {
 } catch {
     Write-Host "Error: Ikon tool has not been installed correctly" -ForegroundColor Red
     Write-Host $_.Exception.Message
-    exit 1
+    return 1
 }
 
-Write-Host "Trusting development certificates..."
+Write-Host "Trusting HTTPS development certificates for localhost..."
 
 try {
     dotnet dev-certs https --trust
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "Warning: Failed to trust development certificates" -ForegroundColor Yellow
+        Write-Host "Warning: Failed to trust HTTPS development certificates" -ForegroundColor Yellow
     }
 } catch {
-    Write-Host "Warning: Failed to trust development certificates" -ForegroundColor Yellow
+    Write-Host "Warning: Failed to trust HTTPS development certificates" -ForegroundColor Yellow
     Write-Host $_.Exception.Message
 }
 
