@@ -1,7 +1,12 @@
 # Set-ExecutionPolicy Bypass -Scope Process -Force; iwr "https://ikon.live/install.ps1" -useb | iex
 
 $ErrorActionPreference = "Stop"
-$dotnetSdkUrl = "https://builds.dotnet.microsoft.com/dotnet/Sdk/8.0.414/dotnet-sdk-8.0.414-win-x64.exe"
+
+# .NET SDK version configuration
+$DOTNET_SDK_VERSION = "8.0.414"
+$DOTNET_SDK_MAJOR = 8
+
+$dotnetSdkUrl = "https://builds.dotnet.microsoft.com/dotnet/Sdk/$DOTNET_SDK_VERSION/dotnet-sdk-$DOTNET_SDK_VERSION-win-x64.exe"
 
 Write-Host "Checking pre-requisites for ikon tool installation..."
 
@@ -14,7 +19,6 @@ try {
 } catch {
     Write-Host ".NET SDK is not installed. Installing..." -ForegroundColor Yellow
     
-    # Check if winget is available
     $wingetAvailable = $false
     try {
         $wingetCheck = winget --version 2>$null
@@ -26,13 +30,21 @@ try {
     }
     
     if ($wingetAvailable) {
-        Write-Host "Installing .NET SDK 8 using winget..." -ForegroundColor Yellow
+        Write-Host "Installing .NET SDK $DOTNET_SDK_MAJOR using winget..." -ForegroundColor Yellow
         try {
-            winget install Microsoft.DotNet.SDK.8 --silent --accept-source-agreements --accept-package-agreements
+            winget install Microsoft.DotNet.SDK.$DOTNET_SDK_MAJOR --silent --accept-source-agreements --accept-package-agreements
             if ($LASTEXITCODE -eq 0) {
-                Write-Host ".NET SDK 8 has been installed successfully!" -ForegroundColor Green
-                Write-Host "Please restart your terminal and run this script again to complete the Ikon tool installation." -ForegroundColor Yellow
-                exit 0
+                Write-Host ".NET SDK $DOTNET_SDK_MAJOR has been installed successfully!" -ForegroundColor Green
+                
+                try {
+                    $null = dotnet --version 2>$null
+                    if (-not $?) {
+                        throw "dotnet command still not available"
+                    }
+                } catch {
+                    Write-Host "Please restart your terminal and run this script again to complete the Ikon tool installation." -ForegroundColor Yellow
+                    exit 0
+                }
             } else {
                 throw "winget install failed with exit code $LASTEXITCODE"
             }
@@ -44,7 +56,7 @@ try {
     
     # If winget is not available or failed, download and run the installer
     if (-not $wingetAvailable -or $LASTEXITCODE -ne 0) {
-        Write-Host "Downloading .NET SDK 8 installer..." -ForegroundColor Yellow
+        Write-Host "Downloading .NET SDK $DOTNET_SDK_MAJOR installer..." -ForegroundColor Yellow
         $tempDir = [System.IO.Path]::GetTempPath()
         $installerPath = Join-Path $tempDir "dotnet-sdk-8-installer.exe"
         
@@ -55,10 +67,17 @@ try {
             
             Start-Process -FilePath $installerPath -Wait -ArgumentList "/quiet", "/norestart"
             
-            Write-Host ".NET SDK 8 installer has completed!" -ForegroundColor Green
-            Write-Host "Please restart your terminal and run this script again to complete the Ikon tool installation." -ForegroundColor Yellow
+            Write-Host ".NET SDK $DOTNET_SDK_MAJOR installer has completed!" -ForegroundColor Green
             
-            exit 0
+            try {
+                $null = dotnet --version 2>$null
+                if (-not $?) {
+                    throw "dotnet command still not available"
+                }
+            } catch {
+                Write-Host "Please restart your terminal and run this script again to complete the Ikon tool installation." -ForegroundColor Yellow
+                exit 0
+            }
         } catch {
             Write-Host "Error: Failed to download or run the .NET SDK installer" -ForegroundColor Red
             Write-Host $_.Exception.Message
@@ -75,8 +94,8 @@ try {
 # Check dotnet version
 $majorVersion = [int]($dotnetVersion.Split('.')[0])
 
-if ($majorVersion -lt 8) {
-    Write-Host "Error: .NET SDK version 8 or higher is required" -ForegroundColor Red
+if ($majorVersion -lt $DOTNET_SDK_MAJOR) {
+    Write-Host "Error: .NET SDK version $DOTNET_SDK_MAJOR or higher is required" -ForegroundColor Red
     Write-Host "Current version: $dotnetVersion"
     Write-Host "Please install the .NET SDK 8: $dotnetSdkUrl"
     exit 1
