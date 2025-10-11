@@ -2,11 +2,11 @@
 
 $ErrorActionPreference = "Stop"
 
-# .NET SDK version configuration
 $DOTNET_SDK_VERSION = "8.0.414"
 $DOTNET_SDK_MAJOR = 8
 
 $dotnetSdkUrl = "https://builds.dotnet.microsoft.com/dotnet/Sdk/$DOTNET_SDK_VERSION/dotnet-sdk-$DOTNET_SDK_VERSION-win-x64.exe"
+$gitInstallerUrl = "https://github.com/git-for-windows/git/releases/download/v2.51.0.windows.2/Git-2.51.0.2-64-bit.exe"
 
 Write-Host "Checking pre-requisites for Ikon tool installation..."
 
@@ -35,6 +35,9 @@ try {
             winget install Microsoft.DotNet.SDK.$DOTNET_SDK_MAJOR --silent --accept-source-agreements --accept-package-agreements
             if ($LASTEXITCODE -eq 0) {
                 Write-Host ".NET SDK $DOTNET_SDK_MAJOR has been installed successfully!" -ForegroundColor Green
+                
+                # Refresh PATH
+                $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
                 
                 try {
                     $null = dotnet --version 2>$null
@@ -70,6 +73,9 @@ try {
             
             Write-Host ".NET SDK $DOTNET_SDK_MAJOR installer has completed!" -ForegroundColor Green
             
+            # Refresh PATH
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+            
             try {
                 $null = dotnet --version 2>$null
                 if (-not $?) {
@@ -84,6 +90,97 @@ try {
             Write-Host "Error: Failed to download or run the .NET SDK installer" -ForegroundColor Red
             Write-Host $_.Exception.Message
             Write-Host "Please manually download and install .NET SDK 8 from: $dotnetSdkUrl" -ForegroundColor Yellow
+            return 1
+        } finally {
+            if (Test-Path $installerPath) {
+                Remove-Item $installerPath -ErrorAction SilentlyContinue
+            }
+        }
+    }
+}
+
+# Check if git is installed
+try {
+    $gitVersion = git --version 2>$null
+    if (-not $gitVersion) {
+        throw "git command not found"
+    }
+    Write-Host "Git $gitVersion found" -ForegroundColor DarkGreen
+} catch {
+    Write-Host "Git is not installed. Installing..." -ForegroundColor Yellow
+    
+    $wingetAvailable = $false
+    try {
+        $wingetCheck = winget --version 2>$null
+        if ($wingetCheck) {
+            $wingetAvailable = $true
+        }
+    } catch {
+        $wingetAvailable = $false
+    }
+    
+    if ($wingetAvailable) {
+        Write-Host "Installing Git using winget..." -ForegroundColor Yellow
+        try {
+            winget install --id Git.Git -e --source winget --silent --accept-source-agreements --accept-package-agreements
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "Git has been installed successfully!" -ForegroundColor Green
+                
+                # Refresh PATH
+                $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+                
+                try {
+                    $null = git --version 2>$null
+                    if (-not $?) {
+                        throw "git command still not available"
+                    }
+                } catch {
+                    Write-Host "Please restart your terminal and run this script again to complete the installation." -ForegroundColor Yellow
+                    Read-Host "Press Enter to exit"
+                    return 0
+                }
+            } else {
+                throw "winget install failed with exit code $LASTEXITCODE"
+            }
+        } catch {
+            Write-Host "Warning: Failed to install Git using winget" -ForegroundColor Yellow
+            Write-Host "Falling back to manual download..." -ForegroundColor Yellow
+            $wingetAvailable = $false
+        }
+    }
+    
+    # If winget is not available or failed, download and run the installer
+    if (-not $wingetAvailable -or $LASTEXITCODE -ne 0) {
+        Write-Host "Downloading Git installer..." -ForegroundColor Yellow
+        $tempDir = [System.IO.Path]::GetTempPath()
+        $installerPath = Join-Path $tempDir "git-installer.exe"
+        
+        try {
+            Invoke-WebRequest -Uri $gitInstallerUrl -OutFile $installerPath -UseBasicParsing
+            Write-Host "Download complete. Running installer..." -ForegroundColor Yellow
+            Write-Host "Please follow the installation prompts." -ForegroundColor Yellow
+            
+            Start-Process -FilePath $installerPath -Wait -ArgumentList "/VERYSILENT", "/NORESTART"
+            
+            Write-Host "Git installer has completed!" -ForegroundColor Green
+            
+            # Refresh PATH
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+            
+            try {
+                $null = git --version 2>$null
+                if (-not $?) {
+                    throw "git command still not available"
+                }
+            } catch {
+                Write-Host "Please restart your terminal and run this script again to complete the installation." -ForegroundColor Yellow
+                Read-Host "Press Enter to exit"
+                return 0
+            }
+        } catch {
+            Write-Host "Error: Failed to download or run the Git installer" -ForegroundColor Red
+            Write-Host $_.Exception.Message
+            Write-Host "Please manually download and install Git from: $gitInstallerUrl" -ForegroundColor Yellow
             return 1
         } finally {
             if (Test-Path $installerPath) {

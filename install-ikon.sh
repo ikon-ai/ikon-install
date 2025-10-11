@@ -10,21 +10,18 @@
 #    source <(curl -sSL https://ikon.live/install.sh)
 #    Note: Sourcing will update your current shell's PATH automatically
 
-# .NET SDK version configuration
 DOTNET_SDK_VERSION="8.0.414"
 DOTNET_SDK_MAJOR="8"
 
 # Detect if being sourced
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     SOURCED=true
-    # Disable set -e when sourced to prevent closing user's terminal on errors
     set +e
 else
     SOURCED=false
     set -e
 fi
 
-# Safe exit function that works whether sourced or executed
 script_exit() {
     local exit_code=$1
     if [[ "$SOURCED" == "true" ]]; then
