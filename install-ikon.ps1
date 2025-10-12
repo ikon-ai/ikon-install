@@ -255,5 +255,6 @@ try {
     Write-Host $_.Exception.Message
 }
 
+Write-Host ""
 Write-Host "Next step, to login to the Ikon backend, run:"
 Write-Host "ikon login" -ForegroundColor Yellow

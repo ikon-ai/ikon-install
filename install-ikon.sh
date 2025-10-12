@@ -289,6 +289,7 @@ if ! dotnet dev-certs https --trust; then
     echo -e "${YELLOW}Warning: Failed to trust HTTPS development certificates${NC}"
 fi
 
+echo
 echo "Next step, to login to the Ikon backend, run:"
 
 if [[ "$SOURCED" == "false" ]] && [[ "$PATH_ALREADY_CONFIGURED" == "false" ]]; then
