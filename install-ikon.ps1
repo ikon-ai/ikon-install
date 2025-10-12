@@ -24,15 +24,29 @@ function Refresh-EnvironmentPath {
 
 Write-Host "Checking pre-requisites for Ikon tool installation..."
 
-# Check if dotnet is installed
+# Check if dotnet is installed and if version is sufficient
+$needsDotnetInstall = $false
+$dotnetVersion = $null
+
 try {
     $dotnetVersion = dotnet --version 2>$null
     if (-not $dotnetVersion) {
         throw "dotnet command not found"
     }
-} catch {
-    Write-Host ".NET SDK is not installed. Installing..." -ForegroundColor Yellow
     
+    $majorVersion = [int]($dotnetVersion.Split('.')[0])
+    if ($majorVersion -lt $DOTNET_SDK_MAJOR) {
+        Write-Host ".NET SDK version $dotnetVersion found, but version $DOTNET_SDK_MAJOR or higher is required" -ForegroundColor Yellow
+        $needsDotnetInstall = $true
+    } else {
+        Write-Host ".NET SDK $dotnetVersion found" -ForegroundColor DarkGreen
+    }
+} catch {
+    Write-Host ".NET SDK is not installed." -ForegroundColor Yellow
+    $needsDotnetInstall = $true
+}
+
+if ($needsDotnetInstall) {
     $wingetAvailable = $false
     try {
         $wingetCheck = winget --version 2>$null
@@ -52,10 +66,11 @@ try {
                 Refresh-EnvironmentPath
                 
                 try {
-                    $null = dotnet --version 2>$null
-                    if (-not $?) {
+                    $dotnetVersion = dotnet --version 2>$null
+                    if (-not $dotnetVersion) {
                         throw "dotnet command still not available"
                     }
+                    Write-Host ".NET SDK $dotnetVersion found" -ForegroundColor DarkGreen
                 } catch {
                     Write-Host "Please restart your terminal and run this script again to complete the Ikon tool installation." -ForegroundColor Yellow
                     Read-Host "Press Enter to exit"
@@ -85,10 +100,11 @@ try {
             Refresh-EnvironmentPath
             
             try {
-                $null = dotnet --version 2>$null
-                if (-not $?) {
+                $dotnetVersion = dotnet --version 2>$null
+                if (-not $dotnetVersion) {
                     throw "dotnet command still not available"
                 }
+                Write-Host ".NET SDK $dotnetVersion found" -ForegroundColor DarkGreen
             } catch {
                 Write-Host "Please restart your terminal and run this script again to complete the Ikon tool installation." -ForegroundColor Yellow
                 Read-Host "Press Enter to exit"
@@ -191,18 +207,6 @@ try {
         }
     }
 }
-
-# Check dotnet version
-$majorVersion = [int]($dotnetVersion.Split('.')[0])
-
-if ($majorVersion -lt $DOTNET_SDK_MAJOR) {
-    Write-Host "Error: .NET SDK version $DOTNET_SDK_MAJOR or higher is required" -ForegroundColor Red
-    Write-Host "Current version: $dotnetVersion"
-    Write-Host "Please install the .NET SDK 8: $dotnetSdkUrl"
-    return 1
-}
-
-Write-Host ".NET SDK $dotnetVersion found" -ForegroundColor DarkGreen
 
 # Silently uninstall old IkonTool package if it exists
 try {
