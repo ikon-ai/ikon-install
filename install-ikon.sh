@@ -1,16 +1,7 @@
 #!/usr/bin/env bash
 
-# Ikon Tool Installer
-#
-# Installation methods:
-# 1. Direct execution (requires terminal restart or manual PATH update):
-#    bash <(curl -sSL https://ikon.live/install.sh)
-#
-# 2. Source to get immediate PATH updates in current terminal:
-#    source <(curl -sSL https://ikon.live/install.sh)
-#    Note: Sourcing will update your current shell's PATH automatically
+# source <(curl -fsSL https://ikon.live/install.sh)
 
-DOTNET_SDK_VERSION="8.0.414"
 DOTNET_SDK_MAJOR="8"
 
 # Detect if being sourced
@@ -23,11 +14,11 @@ else
 fi
 
 script_exit() {
-    local exit_code=$1
+    local exit_code="$1"
     if [[ "$SOURCED" == "true" ]]; then
-        return $exit_code
+        return "$exit_code"
     else
-        exit $exit_code
+        exit "$exit_code"
     fi
 }
 
@@ -36,7 +27,67 @@ GREEN='\033[1;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-get_dotnet_install_instructions() {
+install_homebrew_if_needed() {
+    if ! command -v brew &> /dev/null; then
+        echo -e "${YELLOW}Homebrew not found. Installing Homebrew...${NC}"
+        if /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"; then
+            echo -e "${GREEN}Homebrew installed successfully!${NC}"
+            
+            # Add Homebrew to PATH for this session
+            if [[ "$(uname -m)" == "arm64" ]]; then
+                eval "$(/opt/homebrew/bin/brew shellenv)"
+            else
+                eval "$(/usr/local/bin/brew shellenv)"
+            fi
+            
+            if ! command -v brew &> /dev/null; then
+                echo -e "${YELLOW}Please restart your terminal and run this script again.${NC}"
+                return 1
+            fi
+        else
+            echo -e "${RED}Failed to install Homebrew${NC}"
+            return 1
+        fi
+    else
+        echo -e "${GREEN}Homebrew is already installed${NC}"
+    fi
+    return 0
+}
+
+install_git_if_needed() {
+    if ! command -v git &> /dev/null; then
+        if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+            if command -v apt-get &> /dev/null; then
+                echo -e "${YELLOW}Installing git...${NC}"
+                if sudo apt-get update && sudo apt-get install -y git; then
+                    echo -e "${GREEN}git installed successfully!${NC}"
+                else
+                    echo -e "${RED}Failed to install git${NC}"
+                    return 1
+                fi
+            else
+                echo -e "${RED}git is not installed. Please install git for your distribution.${NC}"
+                return 1
+            fi
+        elif [[ "$OSTYPE" == "darwin"* ]]; then
+            echo -e "${YELLOW}Installing git via Homebrew...${NC}"
+            if brew install git; then
+                echo -e "${GREEN}git installed successfully!${NC}"
+            else
+                echo -e "${RED}Failed to install git${NC}"
+                return 1
+            fi
+        else
+            echo -e "${RED}git is not installed. Please install git for your OS.${NC}"
+            return 1
+        fi
+    else
+        echo -e "${GREEN}git is already installed${NC}"
+    fi
+    return 0
+}
+
+print_dotnet_install_instructions() {
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
         if command -v apt-get &> /dev/null; then
             echo "Please install .NET SDK ${DOTNET_SDK_MAJOR} with following command:"
@@ -48,11 +99,8 @@ get_dotnet_install_instructions() {
             echo "https://learn.microsoft.com/en-us/dotnet/core/install/linux?WT.mc_id=dotnet-35129-website"
         fi
     elif [[ "$OSTYPE" == "darwin"* ]]; then
-        if [[ $(uname -m) == "arm64" ]]; then
-            echo "Please install .NET SDK ${DOTNET_SDK_MAJOR} from: https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/sdk-${DOTNET_SDK_VERSION}-macos-arm64-installer"
-        else
-            echo "Please install .NET SDK ${DOTNET_SDK_MAJOR} from: https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/sdk-${DOTNET_SDK_VERSION}-macos-x64-installer"
-        fi
+        echo "Please install .NET SDK ${DOTNET_SDK_MAJOR} with Homebrew:"
+        echo "brew install --cask dotnet-sdk@${DOTNET_SDK_MAJOR}"
     else
         echo "Please install .NET SDK ${DOTNET_SDK_MAJOR} from: https://dotnet.microsoft.com/en-us/download/dotnet/${DOTNET_SDK_MAJOR}.0"
     fi
@@ -60,103 +108,144 @@ get_dotnet_install_instructions() {
     echo "And then restart your terminal and run this script again!"
 }
 
-echo "Checking pre-requisites for Ikon tool installation..."
+install_dotnet_if_needed() {
+    local needs_install=false
+    
+    # Check if dotnet exists and get version
+    if command -v dotnet &> /dev/null; then
+        DOTNET_VERSION="$(dotnet --version 2>/dev/null || echo "0.0.0")"
+        MAJOR_VERSION="$(echo "$DOTNET_VERSION" | cut -d'.' -f1)"
+        
+        if [ "$MAJOR_VERSION" -lt "$DOTNET_SDK_MAJOR" ]; then
+            echo -e "${YELLOW}.NET SDK version $DOTNET_VERSION found, but version ${DOTNET_SDK_MAJOR} or higher is required${NC}"
+            needs_install=true
+        else
+            echo -e "${GREEN}.NET SDK $DOTNET_VERSION is already installed${NC}"
+            return 0
+        fi
+    else
+        needs_install=true
+    fi
+    
+    if [[ "$needs_install" == "true" ]]; then
+        if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+            if command -v apt-get &> /dev/null; then
+                echo -e "${YELLOW}Installing .NET SDK ${DOTNET_SDK_MAJOR}...${NC}"
 
-# Check if dotnet is installed
-if ! command -v dotnet &> /dev/null; then
-    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        if command -v apt-get &> /dev/null; then
-            echo -e "${YELLOW}Installing .NET SDK ${DOTNET_SDK_MAJOR}...${NC}"
+                if sudo apt-get update && sudo apt-get install -y dotnet-sdk-${DOTNET_SDK_MAJOR}.0; then
+                    echo -e "${GREEN}.NET SDK ${DOTNET_SDK_MAJOR} has been installed successfully!${NC}"
 
-            if sudo apt-get update && sudo apt-get install -y dotnet-sdk-${DOTNET_SDK_MAJOR}.0; then
-                echo -e "${GREEN}.NET SDK ${DOTNET_SDK_MAJOR} has been installed successfully!${NC}"
-
-                if ! command -v dotnet &> /dev/null; then
-                    echo -e "${YELLOW}Please restart your terminal and run this script again to complete the Ikon tool installation.${NC}"
-                    script_exit 0
+                    if ! command -v dotnet &> /dev/null; then
+                        echo -e "${YELLOW}Please restart your terminal and run this script again to complete the Ikon tool installation.${NC}"
+                        return 1
+                    fi
+                else
+                    echo -e "${RED}Failed to install .NET SDK via apt-get${NC}"
+                    print_dotnet_install_instructions
+                    return 1
                 fi
             else
-                echo -e "${RED}Failed to install .NET SDK via apt-get${NC}"
-                get_dotnet_install_instructions
-                script_exit 1
+                echo -e "${RED}.NET SDK is not installed${NC}"
+                print_dotnet_install_instructions
+                return 1
             fi
-        else
-            echo -e "${RED}.NET SDK is not installed${NC}"
-            get_dotnet_install_instructions
-            script_exit 1
-        fi
-    elif [[ "$OSTYPE" == "darwin"* ]]; then
-        echo -e "${YELLOW}Downloading .NET SDK ${DOTNET_SDK_MAJOR} installer...${NC}"
-        TEMP_DIR=$(mktemp -d)
-        trap 'rm -rf "$TEMP_DIR"' EXIT INT TERM
-
-        if [[ $(uname -m) == "arm64" ]]; then
-            DOTNET_URL="https://builds.dotnet.microsoft.com/dotnet/Sdk/${DOTNET_SDK_VERSION}/dotnet-sdk-${DOTNET_SDK_VERSION}-osx-arm64.pkg"
-            INSTALLER_PATH="$TEMP_DIR/dotnet-sdk-${DOTNET_SDK_MAJOR}-arm64.pkg"
-        else
-            DOTNET_URL="https://builds.dotnet.microsoft.com/dotnet/Sdk/${DOTNET_SDK_VERSION}/dotnet-sdk-${DOTNET_SDK_VERSION}-osx-x64.pkg"
-            INSTALLER_PATH="$TEMP_DIR/dotnet-sdk-${DOTNET_SDK_MAJOR}-x64.pkg"
-        fi
-        
-        if curl -sSL "$DOTNET_URL" -o "$INSTALLER_PATH"; then
-            echo -e "${YELLOW}Download complete. Running installer...${NC}"
+        elif [[ "$OSTYPE" == "darwin"* ]]; then
+            echo -e "${YELLOW}Installing .NET SDK via Homebrew...${NC}"
             
-            if sudo installer -pkg "$INSTALLER_PATH" -target /; then
-                echo -e "${GREEN}.NET SDK ${DOTNET_SDK_MAJOR} has been installed successfully!${NC}"
-                rm -rf "$TEMP_DIR"
+            if brew install --cask dotnet-sdk@${DOTNET_SDK_MAJOR}; then
+                echo -e "${GREEN}.NET SDK has been installed successfully!${NC}"
                 
                 if ! command -v dotnet &> /dev/null; then
                     echo -e "${YELLOW}Please restart your terminal and run this script again to complete the Ikon tool installation.${NC}"
-                    script_exit 0
+                    return 1
                 fi
             else
-                echo -e "${RED}Failed to run the installer${NC}"
-                rm -rf "$TEMP_DIR"
-                get_dotnet_install_instructions
-                script_exit 1
+                echo -e "${RED}Failed to install .NET SDK via Homebrew${NC}"
+                print_dotnet_install_instructions
+                return 1
             fi
         else
-            echo -e "${RED}Failed to download the installer${NC}"
-            rm -rf "$TEMP_DIR"
-            get_dotnet_install_instructions
-            script_exit 1
+            # Other OS
+            echo -e "${RED}.NET SDK is not installed${NC}"
+            print_dotnet_install_instructions
+            return 1
         fi
-    else
-        # Other OS
-        echo -e "${RED}.NET SDK is not installed${NC}"
-        get_dotnet_install_instructions
-        script_exit 1
     fi
+    return 0
+}
+
+detect_shell_rc() {
+    # Determine shell config file for adding PATH changes
+    local current_shell="${SHELL##*/}"
+    local shell_rc=""
+
+    case "$current_shell" in
+        zsh)
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                shell_rc="$HOME/.zprofile"
+            else
+                shell_rc="$HOME/.zshrc"
+            fi
+            ;;
+        bash)
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                if [[ -f "$HOME/.bash_profile" ]]; then
+                    shell_rc="$HOME/.bash_profile"
+                else
+                    shell_rc="$HOME/.bashrc"
+                fi
+            else
+                shell_rc="$HOME/.bashrc"
+            fi
+            ;;
+        fish)
+            shell_rc="$HOME/.config/fish/config.fish"
+            ;;
+        *)
+            # Fallback: try detected versions, then .profile
+            if [[ -n "$ZSH_VERSION" ]]; then
+                if [[ "$OSTYPE" == "darwin"* ]]; then
+                    shell_rc="$HOME/.zprofile"
+                else
+                    shell_rc="$HOME/.zshrc"
+                fi
+            elif [[ -n "$BASH_VERSION" ]]; then
+                shell_rc="$HOME/.bashrc"
+            else
+                shell_rc="$HOME/.profile"
+            fi
+            ;;
+    esac
+
+    mkdir -p "$(dirname "$shell_rc")" 2>/dev/null || true
+    touch "$shell_rc" 2>/dev/null || true
+    echo "$shell_rc"
+}
+
+echo "Checking pre-requisites for Ikon tool installation..."
+
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    install_homebrew_if_needed || script_exit 1
 fi
 
-# Check dotnet version
-DOTNET_VERSION=$(dotnet --version)
-MAJOR_VERSION=$(echo "$DOTNET_VERSION" | cut -d'.' -f1)
+install_git_if_needed || script_exit 1
+install_dotnet_if_needed || script_exit 1
+
+# Check dotnet version (final verification after installation)
+DOTNET_VERSION="$(dotnet --version)"
+MAJOR_VERSION="$(echo "$DOTNET_VERSION" | cut -d'.' -f1)"
 
 if [ "$MAJOR_VERSION" -lt "$DOTNET_SDK_MAJOR" ]; then
     echo -e "${RED}Error: .NET SDK version ${DOTNET_SDK_MAJOR} or higher is required${NC}"
     echo "Current version: $DOTNET_VERSION"
-    get_dotnet_install_instructions
+    print_dotnet_install_instructions
     script_exit 1
 fi
 
-echo -e "${GREEN}.NET SDK $DOTNET_VERSION found${NC}"
-
-# Determine the dotnet tools path
-if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    DOTNET_TOOLS_PATH="$HOME/.dotnet/tools"
-    SHELL_RC="$HOME/.bashrc"
-    if [ -n "$ZSH_VERSION" ]; then
-        SHELL_RC="$HOME/.zshrc"
-    fi
-elif [[ "$OSTYPE" == "darwin"* ]]; then
-    DOTNET_TOOLS_PATH="$HOME/.dotnet/tools"
-    SHELL_RC="$HOME/.zprofile"
-else
-    echo -e "${YELLOW}Warning: Unknown OS type, using default paths${NC}"
-    DOTNET_TOOLS_PATH="$HOME/.dotnet/tools"
-    SHELL_RC="$HOME/.bashrc"
-fi
+# Determine the dotnet tools path and shell configuration file
+DOTNET_TOOLS_PATH="$HOME/.dotnet/tools"
+SHELL_RC="$(detect_shell_rc)"
+SHELL_NAME="${SHELL##*/}"
 
 PATH_ALREADY_CONFIGURED=false
 
@@ -181,7 +270,11 @@ fi
 if [[ "$PATH_ALREADY_CONFIGURED" == "false" ]]; then
     if ! grep -q "$DOTNET_TOOLS_PATH" "$SHELL_RC" 2>/dev/null; then
         echo "Adding dotnet tools path $DOTNET_TOOLS_PATH to $SHELL_RC for future sessions"
-        echo "export PATH=\"$DOTNET_TOOLS_PATH:\$PATH\"" >> "$SHELL_RC"
+        if [[ "$SHELL_NAME" == "fish" ]]; then
+            echo "set -gx PATH $DOTNET_TOOLS_PATH \$PATH" >> "$SHELL_RC"
+        else
+            echo "export PATH=\"$DOTNET_TOOLS_PATH:\$PATH\"" >> "$SHELL_RC"
+        fi
     fi
 fi
 
@@ -199,7 +292,11 @@ fi
 echo "Next step, to login to the Ikon backend, run:"
 
 if [[ "$SOURCED" == "false" ]] && [[ "$PATH_ALREADY_CONFIGURED" == "false" ]]; then
-    echo -e "${YELLOW}export PATH=\"$DOTNET_TOOLS_PATH:\$PATH\"${NC}"
+    if [[ "$SHELL_NAME" == "fish" ]]; then
+        echo -e "${YELLOW}set -gx PATH $DOTNET_TOOLS_PATH \$PATH${NC}"
+    else
+        echo -e "${YELLOW}export PATH=\"$DOTNET_TOOLS_PATH:\$PATH\"${NC}"
+    fi
 fi
 
 echo -e "${YELLOW}ikon login${NC}"
