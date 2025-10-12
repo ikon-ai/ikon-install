@@ -8,6 +8,20 @@ $DOTNET_SDK_MAJOR = 8
 $dotnetSdkUrl = "https://builds.dotnet.microsoft.com/dotnet/Sdk/$DOTNET_SDK_VERSION/dotnet-sdk-$DOTNET_SDK_VERSION-win-x64.exe"
 $gitInstallerUrl = "https://github.com/git-for-windows/git/releases/download/v2.51.0.windows.2/Git-2.51.0.2-64-bit.exe"
 
+function Refresh-EnvironmentPath {
+    $machinePath = [System.Environment]::GetEnvironmentVariable("Path","Machine")
+    $userPath = [System.Environment]::GetEnvironmentVariable("Path","User")
+    $env:Path = if ($machinePath -and $userPath) { 
+        "$machinePath;$userPath" 
+    } elseif ($machinePath) { 
+        $machinePath 
+    } elseif ($userPath) { 
+        $userPath 
+    } else { 
+        $env:Path 
+    }
+}
+
 Write-Host "Checking pre-requisites for Ikon tool installation..."
 
 # Check if dotnet is installed
@@ -35,9 +49,7 @@ try {
             winget install Microsoft.DotNet.SDK.$DOTNET_SDK_MAJOR --silent --accept-source-agreements --accept-package-agreements
             if ($LASTEXITCODE -eq 0) {
                 Write-Host ".NET SDK $DOTNET_SDK_MAJOR has been installed successfully!" -ForegroundColor Green
-                
-                # Refresh PATH
-                $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+                Refresh-EnvironmentPath
                 
                 try {
                     $null = dotnet --version 2>$null
@@ -68,13 +80,9 @@ try {
             Invoke-WebRequest -Uri $dotnetSdkUrl -OutFile $installerPath -UseBasicParsing
             Write-Host "Download complete. Running installer..." -ForegroundColor Yellow
             Write-Host "Please follow the installation prompts." -ForegroundColor Yellow
-            
             Start-Process -FilePath $installerPath -Wait -ArgumentList "/quiet", "/norestart"
-            
             Write-Host ".NET SDK $DOTNET_SDK_MAJOR installer has completed!" -ForegroundColor Green
-            
-            # Refresh PATH
-            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+            Refresh-EnvironmentPath
             
             try {
                 $null = dotnet --version 2>$null
@@ -125,9 +133,7 @@ try {
             winget install --id Git.Git -e --source winget --silent --accept-source-agreements --accept-package-agreements
             if ($LASTEXITCODE -eq 0) {
                 Write-Host "Git has been installed successfully!" -ForegroundColor Green
-                
-                # Refresh PATH
-                $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+                Refresh-EnvironmentPath
                 
                 try {
                     $null = git --version 2>$null
@@ -159,13 +165,9 @@ try {
             Invoke-WebRequest -Uri $gitInstallerUrl -OutFile $installerPath -UseBasicParsing
             Write-Host "Download complete. Running installer..." -ForegroundColor Yellow
             Write-Host "Please follow the installation prompts." -ForegroundColor Yellow
-            
             Start-Process -FilePath $installerPath -Wait -ArgumentList "/VERYSILENT", "/NORESTART"
-            
             Write-Host "Git installer has completed!" -ForegroundColor Green
-            
-            # Refresh PATH
-            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+            Refresh-EnvironmentPath
             
             try {
                 $null = git --version 2>$null
