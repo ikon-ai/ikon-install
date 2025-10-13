@@ -285,8 +285,14 @@ if ! ikon version; then
 fi
 
 echo "Trusting HTTPS development certificates for localhost..."
-if ! dotnet dev-certs https --trust; then
-    echo -e "${YELLOW}Warning: Failed to trust HTTPS development certificates${NC}"
+if [[ "$CI" == "true" ]]; then
+    if ! dotnet dev-certs https; then
+        echo -e "${YELLOW}Warning: Failed to generate HTTPS development certificates${NC}"
+    fi
+else
+    if ! dotnet dev-certs https --trust; then
+        echo -e "${YELLOW}Warning: Failed to trust HTTPS development certificates${NC}"
+    fi
 fi
 
 echo
