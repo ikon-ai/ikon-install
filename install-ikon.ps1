@@ -92,10 +92,11 @@ if ($needsDotnetInstall) {
         $installerPath = Join-Path $tempDir "dotnet-sdk-8-installer.exe"
         
         try {
+            $ProgressPreference = 'SilentlyContinue'
             Invoke-WebRequest -Uri $dotnetSdkUrl -OutFile $installerPath -UseBasicParsing
+            $ProgressPreference = 'Continue'
             Write-Host "Download complete. Running installer..." -ForegroundColor Yellow
-            Write-Host "Please follow the installation prompts." -ForegroundColor Yellow
-            Start-Process -FilePath $installerPath -Wait -ArgumentList "/quiet", "/norestart"
+            Start-Process -FilePath $installerPath -Wait -ArgumentList "/norestart"
             Write-Host ".NET SDK $DOTNET_SDK_MAJOR installer has completed!" -ForegroundColor Green
             Refresh-EnvironmentPath
             
@@ -178,10 +179,11 @@ try {
         $installerPath = Join-Path $tempDir "git-installer.exe"
         
         try {
+            $ProgressPreference = 'SilentlyContinue'
             Invoke-WebRequest -Uri $gitInstallerUrl -OutFile $installerPath -UseBasicParsing
+            $ProgressPreference = 'Continue'
             Write-Host "Download complete. Running installer..." -ForegroundColor Yellow
-            Write-Host "Please follow the installation prompts." -ForegroundColor Yellow
-            Start-Process -FilePath $installerPath -Wait -ArgumentList "/VERYSILENT", "/NORESTART"
+            Start-Process -FilePath $installerPath -Wait -ArgumentList "/NORESTART"
             Write-Host "Git installer has completed!" -ForegroundColor Green
             Refresh-EnvironmentPath
             
