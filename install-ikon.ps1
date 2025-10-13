@@ -210,9 +210,10 @@ try {
     }
 }
 
-# Silently uninstall old IkonTool package if it exists
+# Silently uninstall other ikon tool packages if they exist
 try {
     dotnet tool uninstall IkonTool -g 2>&1 | Out-Null
+    dotnet tool uninstall ikon-internal -g 2>&1 | Out-Null
 } catch {
 }
 
