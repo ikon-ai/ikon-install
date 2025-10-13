@@ -96,7 +96,7 @@ if ($needsDotnetInstall) {
             Invoke-WebRequest -Uri $dotnetSdkUrl -OutFile $installerPath -UseBasicParsing
             $ProgressPreference = 'Continue'
             Write-Host "Download complete. Running installer..." -ForegroundColor Yellow
-            Start-Process -FilePath $installerPath -Wait -ArgumentList "/norestart"
+            Start-Process -FilePath $installerPath -Wait -ArgumentList "/quiet", "/norestart"
             Write-Host ".NET SDK $DOTNET_SDK_MAJOR installer has completed!" -ForegroundColor Green
             Refresh-EnvironmentPath
             
@@ -183,7 +183,7 @@ try {
             Invoke-WebRequest -Uri $gitInstallerUrl -OutFile $installerPath -UseBasicParsing
             $ProgressPreference = 'Continue'
             Write-Host "Download complete. Running installer..." -ForegroundColor Yellow
-            Start-Process -FilePath $installerPath -Wait -ArgumentList "/NORESTART"
+            Start-Process -FilePath $installerPath -Wait -ArgumentList "/VERYSILENT", "/NORESTART"
             Write-Host "Git installer has completed!" -ForegroundColor Green
             Refresh-EnvironmentPath
             
