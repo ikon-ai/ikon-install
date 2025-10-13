@@ -254,7 +254,11 @@ try {
 Write-Host "Trusting HTTPS development certificates for localhost..."
 
 try {
-    dotnet dev-certs https --trust
+    if ($env:CI -eq "true") {
+        dotnet dev-certs https
+    } else {
+        dotnet dev-certs https --trust
+    }
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Warning: Failed to trust HTTPS development certificates" -ForegroundColor Yellow
     }
