@@ -2,8 +2,8 @@
 
 $ErrorActionPreference = "Stop"
 
-$DOTNET_SDK_VERSION = "8.0.414"
-$DOTNET_SDK_MAJOR = 8
+$DOTNET_SDK_VERSION = "10.0.100"
+$DOTNET_SDK_MAJOR = 10
 
 $dotnetSdkUrl = "https://builds.dotnet.microsoft.com/dotnet/Sdk/$DOTNET_SDK_VERSION/dotnet-sdk-$DOTNET_SDK_VERSION-win-x64.exe"
 $gitInstallerUrl = "https://github.com/git-for-windows/git/releases/download/v2.51.0.windows.2/Git-2.51.0.2-64-bit.exe"

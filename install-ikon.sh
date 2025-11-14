@@ -2,7 +2,7 @@
 
 # source <(curl -fsSL https://ikon.live/install.sh)
 
-DOTNET_SDK_MAJOR="8"
+DOTNET_SDK_MAJOR="10"
 
 # Detect if being sourced
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
