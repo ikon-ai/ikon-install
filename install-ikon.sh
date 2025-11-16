@@ -101,7 +101,54 @@ print_dotnet_install_instructions() {
     echo "And then restart your terminal and run this script again!"
 }
 
+detect_shell_rc() {
+    # Determine shell config file for adding PATH changes
+    local current_shell="${SHELL##*/}"
+    local shell_rc=""
+
+    case "$current_shell" in
+        zsh)
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                shell_rc="$HOME/.zprofile"
+            else
+                shell_rc="$HOME/.zshrc"
+            fi
+            ;;
+        bash)
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                if [[ -f "$HOME/.bash_profile" ]]; then
+                    shell_rc="$HOME/.bash_profile"
+                else
+                    shell_rc="$HOME/.bashrc"
+                fi
+            else
+                shell_rc="$HOME/.bashrc"
+            fi
+            ;;
+        *)
+            # Fallback: try detected versions, then .profile
+            if [[ -n "$ZSH_VERSION" ]]; then
+                if [[ "$OSTYPE" == "darwin"* ]]; then
+                    shell_rc="$HOME/.zprofile"
+                else
+                    shell_rc="$HOME/.zshrc"
+                fi
+            elif [[ -n "$BASH_VERSION" ]]; then
+                shell_rc="$HOME/.bashrc"
+            else
+                shell_rc="$HOME/.profile"
+            fi
+            ;;
+    esac
+
+    mkdir -p "$(dirname "$shell_rc")" 2>/dev/null || true
+    touch "$shell_rc" 2>/dev/null || true
+    echo "$shell_rc"
+}
+
 install_dotnet_via_script() {
+    local shell_rc="$1"
+
     echo -e "${YELLOW}Falling back to official .NET install script...${NC}"
 
     local dotnet_root="$HOME/.dotnet"
@@ -124,9 +171,18 @@ install_dotnet_via_script() {
         return 1
     fi
 
+    if ! echo "$PATH" | grep -q "$dotnet_root"; then
+        export PATH="$dotnet_root:$PATH"
+    fi
     export DOTNET_ROOT="$dotnet_root"
-    if ! echo "$PATH" | grep -q "$DOTNET_ROOT"; then
-        export PATH="$DOTNET_ROOT:$PATH"
+
+    # Persist DOTNET_ROOT and ~/.dotnet on PATH for future shells
+    if ! grep -q "DOTNET_ROOT" "$shell_rc" 2>/dev/null; then
+        echo 'export DOTNET_ROOT="$HOME/.dotnet"' >> "$shell_rc"
+    fi
+    if ! grep -q '\$HOME/.dotnet"' "$shell_rc" 2>/dev/null && \
+       ! grep -q '\$HOME/.dotnet:' "$shell_rc" 2>/dev/null; then
+        echo 'export PATH="$PATH:$HOME/.dotnet"' >> "$shell_rc"
     fi
 
     echo -e "${GREEN}.NET SDK ${DOTNET_SDK_MAJOR} has been installed using the official install script!${NC}"
@@ -134,6 +190,7 @@ install_dotnet_via_script() {
 }
 
 install_dotnet_if_needed() {
+    local shell_rc="$1"
     local needs_install=false
     
     # Check if dotnet exists and get version
@@ -166,13 +223,13 @@ install_dotnet_if_needed() {
                     fi
                 else
                     echo -e "${YELLOW}Failed to install .NET SDK via apt-get, trying official install script...${NC}"
-                    if ! install_dotnet_via_script; then
+                    if ! install_dotnet_via_script "$shell_rc"; then
                         return 1
                     fi
                 fi
             else
                 echo -e "${YELLOW}apt-get not available, trying official install script...${NC}"
-                if ! install_dotnet_via_script; then
+                if ! install_dotnet_via_script "$shell_rc"; then
                     return 1
                 fi
             fi
@@ -201,62 +258,17 @@ install_dotnet_if_needed() {
     return 0
 }
 
-detect_shell_rc() {
-    # Determine shell config file for adding PATH changes
-    local current_shell="${SHELL##*/}"
-    local shell_rc=""
-
-    case "$current_shell" in
-        zsh)
-            if [[ "$OSTYPE" == "darwin"* ]]; then
-                shell_rc="$HOME/.zprofile"
-            else
-                shell_rc="$HOME/.zshrc"
-            fi
-            ;;
-        bash)
-            if [[ "$OSTYPE" == "darwin"* ]]; then
-                if [[ -f "$HOME/.bash_profile" ]]; then
-                    shell_rc="$HOME/.bash_profile"
-                else
-                    shell_rc="$HOME/.bashrc"
-                fi
-            else
-                shell_rc="$HOME/.bashrc"
-            fi
-            ;;
-        fish)
-            shell_rc="$HOME/.config/fish/config.fish"
-            ;;
-        *)
-            # Fallback: try detected versions, then .profile
-            if [[ -n "$ZSH_VERSION" ]]; then
-                if [[ "$OSTYPE" == "darwin"* ]]; then
-                    shell_rc="$HOME/.zprofile"
-                else
-                    shell_rc="$HOME/.zshrc"
-                fi
-            elif [[ -n "$BASH_VERSION" ]]; then
-                shell_rc="$HOME/.bashrc"
-            else
-                shell_rc="$HOME/.profile"
-            fi
-            ;;
-    esac
-
-    mkdir -p "$(dirname "$shell_rc")" 2>/dev/null || true
-    touch "$shell_rc" 2>/dev/null || true
-    echo "$shell_rc"
-}
-
 echo "Checking pre-requisites for Ikon tool installation..."
+
+SHELL_RC="$(detect_shell_rc)"
+SHELL_NAME="${SHELL##*/}"
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
     install_homebrew_if_needed || exit 1
 fi
 
 install_git_if_needed || exit 1
-install_dotnet_if_needed || exit 1
+install_dotnet_if_needed "$SHELL_RC" || exit 1
 
 # Check dotnet version (final verification after installation)
 DOTNET_VERSION="$(dotnet --version)"
@@ -269,21 +281,11 @@ if [ "$MAJOR_VERSION" -lt "$DOTNET_SDK_MAJOR" ]; then
     exit 1
 fi
 
-DOTNET_ROOT_DEFAULT="$HOME/.dotnet"
-DOTNET_TOOLS_PATH="$DOTNET_ROOT_DEFAULT/tools"
+DOTNET_TOOLS_PATH="$HOME/.dotnet/tools"
 
-SHELL_RC="$(detect_shell_rc)"
-SHELL_NAME="${SHELL##*/}"
-
-if [[ -x "$DOTNET_ROOT_DEFAULT/dotnet" ]]; then
-    if ! echo "$PATH" | grep -q "$DOTNET_ROOT_DEFAULT"; then
-        export PATH="$DOTNET_ROOT_DEFAULT:$PATH"
-    fi
-    export DOTNET_ROOT="$DOTNET_ROOT_DEFAULT"
-fi
-
+# Ensure tools are available inside this script
 if ! echo "$PATH" | grep -q "$DOTNET_TOOLS_PATH"; then
-    export PATH="$DOTNET_TOOLS_PATH:$PATH"
+    export PATH="$PATH:$DOTNET_TOOLS_PATH"
 fi
 
 # Silently uninstall other ikon tool packages if they exist
@@ -297,32 +299,10 @@ if ! dotnet tool install ikon -g; then
     exit 1
 fi
 
-# Persist environment changes for future terminals
-if ! grep -q ".dotnet/tools" "$SHELL_RC" 2>/dev/null; then
+# Persist tools path for future terminals
+if ! grep -q '\$HOME/.dotnet/tools' "$SHELL_RC" 2>/dev/null; then
     echo "Adding dotnet tools path $DOTNET_TOOLS_PATH to $SHELL_RC for future sessions"
-    if [[ "$SHELL_NAME" == "fish" ]]; then
-        echo "set -gx PATH \$PATH \$HOME/.dotnet/tools" >> "$SHELL_RC"
-    else
-        echo "export PATH=\"\$PATH:\$HOME/.dotnet/tools\"" >> "$SHELL_RC"
-    fi
-fi
-
-if [[ -x "$DOTNET_ROOT_DEFAULT/dotnet" ]]; then
-    if [[ "$SHELL_NAME" == "fish" ]]; then
-        if ! grep -q "set -gx DOTNET_ROOT" "$SHELL_RC" 2>/dev/null; then
-            echo "set -gx DOTNET_ROOT \$HOME/.dotnet" >> "$SHELL_RC"
-        fi
-        if ! grep -q "\$HOME/.dotnet " "$SHELL_RC" 2>/dev/null && ! grep -q "\$HOME/.dotnet:" "$SHELL_RC" 2>/dev/null; then
-            echo "set -gx PATH \$PATH \$HOME/.dotnet" >> "$SHELL_RC"
-        fi
-    else
-        if ! grep -q "DOTNET_ROOT" "$SHELL_RC" 2>/dev/null; then
-            echo "export DOTNET_ROOT=\"\$HOME/.dotnet\"" >> "$SHELL_RC"
-        fi
-        if ! grep -q "\$HOME/.dotnet" "$SHELL_RC" 2>/dev/null; then
-            echo "export PATH=\"\$PATH:\$HOME/.dotnet\"" >> "$SHELL_RC"
-        fi
-    fi
+    echo 'export PATH="$PATH:$HOME/.dotnet/tools"' >> "$SHELL_RC"
 fi
 
 echo "Testing Ikon tool installation..."
