@@ -269,26 +269,20 @@ if [ "$MAJOR_VERSION" -lt "$DOTNET_SDK_MAJOR" ]; then
     exit 1
 fi
 
-# Determine if dotnet is using the local script install path
 DOTNET_ROOT_DEFAULT="$HOME/.dotnet"
-DOTNET_BIN_PATH="$(command -v dotnet || true)"
-DOTNET_INSTALLED_LOCAL="false"
+DOTNET_TOOLS_PATH="$DOTNET_ROOT_DEFAULT/tools"
 
-if [[ "$DOTNET_BIN_PATH" == "$DOTNET_ROOT_DEFAULT/"* ]] || [[ -x "$DOTNET_ROOT_DEFAULT/dotnet" ]]; then
-    DOTNET_INSTALLED_LOCAL="true"
-fi
-
-# Determine the dotnet tools path and shell configuration file
-DOTNET_TOOLS_PATH="$HOME/.dotnet/tools"
 SHELL_RC="$(detect_shell_rc)"
 SHELL_NAME="${SHELL##*/}"
 
-PATH_ALREADY_CONFIGURED=false
+if [[ -x "$DOTNET_ROOT_DEFAULT/dotnet" ]]; then
+    if ! echo "$PATH" | grep -q "$DOTNET_ROOT_DEFAULT"; then
+        export PATH="$DOTNET_ROOT_DEFAULT:$PATH"
+    fi
+    export DOTNET_ROOT="$DOTNET_ROOT_DEFAULT"
+fi
 
-# Check if dotnet tools path is already in PATH
-if echo "$PATH" | grep -q "$DOTNET_TOOLS_PATH"; then
-    PATH_ALREADY_CONFIGURED=true
-else
+if ! echo "$PATH" | grep -q "$DOTNET_TOOLS_PATH"; then
     export PATH="$DOTNET_TOOLS_PATH:$PATH"
 fi
 
@@ -303,32 +297,30 @@ if ! dotnet tool install ikon -g; then
     exit 1
 fi
 
-# Add to shell configuration file for future sessions
-# 1. Ensure tools path is in PATH
-if ! grep -q "$DOTNET_TOOLS_PATH" "$SHELL_RC" 2>/dev/null; then
+# Persist environment changes for future terminals
+if ! grep -q ".dotnet/tools" "$SHELL_RC" 2>/dev/null; then
     echo "Adding dotnet tools path $DOTNET_TOOLS_PATH to $SHELL_RC for future sessions"
     if [[ "$SHELL_NAME" == "fish" ]]; then
-        echo "set -gx PATH $DOTNET_TOOLS_PATH \$PATH" >> "$SHELL_RC"
+        echo "set -gx PATH \$PATH \$HOME/.dotnet/tools" >> "$SHELL_RC"
     else
-        echo "export PATH=\"$DOTNET_TOOLS_PATH:\$PATH\"" >> "$SHELL_RC"
+        echo "export PATH=\"\$PATH:\$HOME/.dotnet/tools\"" >> "$SHELL_RC"
     fi
 fi
 
-# 2. If installed via script, persist DOTNET_ROOT and dotnet root on PATH
-if [[ "$DOTNET_INSTALLED_LOCAL" == "true" ]]; then
+if [[ -x "$DOTNET_ROOT_DEFAULT/dotnet" ]]; then
     if [[ "$SHELL_NAME" == "fish" ]]; then
-        if ! grep -q "set -gx DOTNET_ROOT $DOTNET_ROOT_DEFAULT" "$SHELL_RC" 2>/dev/null; then
-            echo "set -gx DOTNET_ROOT $DOTNET_ROOT_DEFAULT" >> "$SHELL_RC"
+        if ! grep -q "set -gx DOTNET_ROOT" "$SHELL_RC" 2>/dev/null; then
+            echo "set -gx DOTNET_ROOT \$HOME/.dotnet" >> "$SHELL_RC"
         fi
-        if ! grep -q "set -gx PATH $DOTNET_ROOT_DEFAULT" "$SHELL_RC" 2>/dev/null; then
-            echo "set -gx PATH $DOTNET_ROOT_DEFAULT \$PATH" >> "$SHELL_RC"
+        if ! grep -q "\$HOME/.dotnet " "$SHELL_RC" 2>/dev/null && ! grep -q "\$HOME/.dotnet:" "$SHELL_RC" 2>/dev/null; then
+            echo "set -gx PATH \$PATH \$HOME/.dotnet" >> "$SHELL_RC"
         fi
     else
         if ! grep -q "DOTNET_ROOT" "$SHELL_RC" 2>/dev/null; then
-            echo "export DOTNET_ROOT=\"$DOTNET_ROOT_DEFAULT\"" >> "$SHELL_RC"
+            echo "export DOTNET_ROOT=\"\$HOME/.dotnet\"" >> "$SHELL_RC"
         fi
-        if ! grep -q "$DOTNET_ROOT_DEFAULT" "$SHELL_RC" 2>/dev/null; then
-            echo "export PATH=\"$DOTNET_ROOT_DEFAULT:\$PATH\"" >> "$SHELL_RC"
+        if ! grep -q "\$HOME/.dotnet" "$SHELL_RC" 2>/dev/null; then
+            echo "export PATH=\"\$PATH:\$HOME/.dotnet\"" >> "$SHELL_RC"
         fi
     fi
 fi
@@ -359,4 +351,4 @@ echo "  2) In the new terminal, run the following command to sign in:"
 echo
 echo -e "     ${YELLOW}ikon login${NC}"
 echo
-echo "The ikon tool will only work after you have opened a new terminal session."
+echo "The Ikon tool will only work after you have opened a new terminal session."
