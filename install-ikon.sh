@@ -1,26 +1,10 @@
 #!/usr/bin/env bash
 
-# source <(curl -fsSL https://ikon.live/install.sh)
+# curl -fsSL https://ikon.live/install.sh | bash
 
 DOTNET_SDK_MAJOR="10"
 
-# Detect if being sourced
-if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
-    SOURCED=true
-    set +e
-else
-    SOURCED=false
-    set -e
-fi
-
-script_exit() {
-    local exit_code="$1"
-    if [[ "$SOURCED" == "true" ]]; then
-        return "$exit_code"
-    else
-        exit "$exit_code"
-    fi
-}
+set -e
 
 RED='\033[0;31m'
 GREEN='\033[1;32m'
@@ -117,6 +101,38 @@ print_dotnet_install_instructions() {
     echo "And then restart your terminal and run this script again!"
 }
 
+install_dotnet_via_script() {
+    echo -e "${YELLOW}Falling back to official .NET install script...${NC}"
+
+    local dotnet_root="$HOME/.dotnet"
+    mkdir -p "$dotnet_root"
+
+    local install_script
+    install_script="$(mktemp)"
+
+    if ! curl -L https://dot.net/v1/dotnet-install.sh -o "$install_script"; then
+        echo -e "${RED}Failed to download .NET install script${NC}"
+        print_dotnet_install_instructions
+        return 1
+    fi
+
+    chmod +x "$install_script"
+
+    if ! "$install_script" --channel "${DOTNET_SDK_MAJOR}.0" --install-dir "$dotnet_root"; then
+        echo -e "${RED}Failed to install .NET SDK using official install script${NC}"
+        print_dotnet_install_instructions
+        return 1
+    fi
+
+    export DOTNET_ROOT="$dotnet_root"
+    if ! echo "$PATH" | grep -q "$DOTNET_ROOT"; then
+        export PATH="$DOTNET_ROOT:$PATH"
+    fi
+
+    echo -e "${GREEN}.NET SDK ${DOTNET_SDK_MAJOR} has been installed using the official install script!${NC}"
+    return 0
+}
+
 install_dotnet_if_needed() {
     local needs_install=false
     
@@ -149,9 +165,10 @@ install_dotnet_if_needed() {
                         return 1
                     fi
                 else
-                    echo -e "${RED}Failed to install .NET SDK via apt-get${NC}"
-                    print_dotnet_install_instructions
-                    return 1
+                    echo -e "${YELLOW}Failed to install .NET SDK via apt-get, trying official install script...${NC}"
+                    if ! install_dotnet_via_script; then
+                        return 1
+                    fi
                 fi
             else
                 echo -e "${RED}.NET SDK is not installed${NC}"
@@ -234,11 +251,11 @@ detect_shell_rc() {
 echo "Checking pre-requisites for Ikon tool installation..."
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    install_homebrew_if_needed || script_exit 1
+    install_homebrew_if_needed || exit 1
 fi
 
-install_git_if_needed || script_exit 1
-install_dotnet_if_needed || script_exit 1
+install_git_if_needed || exit 1
+install_dotnet_if_needed || exit 1
 
 # Check dotnet version (final verification after installation)
 DOTNET_VERSION="$(dotnet --version)"
@@ -248,7 +265,7 @@ if [ "$MAJOR_VERSION" -lt "$DOTNET_SDK_MAJOR" ]; then
     echo -e "${RED}Error: .NET SDK version ${DOTNET_SDK_MAJOR} or higher is required${NC}"
     echo "Current version: $DOTNET_VERSION"
     print_dotnet_install_instructions
-    script_exit 1
+    exit 1
 fi
 
 # Determine the dotnet tools path and shell configuration file
@@ -273,7 +290,7 @@ dotnet tool uninstall ikon-internal -g >/dev/null 2>&1 || true
 echo "Installing Ikon tool..."
 if ! dotnet tool install ikon -g; then
     echo -e "${RED}Error: Failed to install Ikon tool${NC}"
-    script_exit 1
+    exit 1
 fi
 
 # Add to shell configuration file for future sessions (only if not already in PATH or in the config)
@@ -291,7 +308,7 @@ fi
 echo "Testing Ikon tool installation..."
 if ! ikon version; then
     echo -e "${RED}Error: Ikon tool has not been installed correctly${NC}"
-    script_exit 1
+    exit 1
 fi
 
 echo "Trusting HTTPS development certificates for localhost..."
@@ -308,12 +325,12 @@ fi
 echo
 echo "Next step, to login to the Ikon backend, run:"
 
-if [[ "$SOURCED" == "false" ]] && [[ "$PATH_ALREADY_CONFIGURED" == "false" ]]; then
+if [[ "$PATH_ALREADY_CONFIGURED" == "false" ]]; then
     if [[ "$SHELL_NAME" == "fish" ]]; then
-        echo -e "${YELLOW}set -gx PATH $DOTNET_TOOLS_PATH \$PATH${NC}"
+        echo -e "${YELLOW}set -gx PATH $DOTNET_TOOLS_PATH \$PATH; and ikon login${NC}"
     else
-        echo -e "${YELLOW}export PATH=\"$DOTNET_TOOLS_PATH:\$PATH\"${NC}"
+        echo -e "${YELLOW}export PATH=\"$DOTNET_TOOLS_PATH:\$PATH\" && ikon login${NC}"
     fi
+else
+    echo -e "${YELLOW}ikon login${NC}"
 fi
-
-echo -e "${YELLOW}ikon login${NC}"
