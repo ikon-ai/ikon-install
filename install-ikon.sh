@@ -171,19 +171,11 @@ install_dotnet_via_script() {
         return 1
     fi
 
-    if ! echo "$PATH" | grep -q "$dotnet_root"; then
-        export PATH="$dotnet_root:$PATH"
-    fi
+    export PATH="$dotnet_root:$PATH"
     export DOTNET_ROOT="$dotnet_root"
 
-    # Persist DOTNET_ROOT and ~/.dotnet on PATH for future shells
-    if ! grep -q "DOTNET_ROOT" "$shell_rc" 2>/dev/null; then
-        echo 'export DOTNET_ROOT="$HOME/.dotnet"' >> "$shell_rc"
-    fi
-    if ! grep -q '\$HOME/.dotnet"' "$shell_rc" 2>/dev/null && \
-       ! grep -q '\$HOME/.dotnet:' "$shell_rc" 2>/dev/null; then
-        echo 'export PATH="$PATH:$HOME/.dotnet"' >> "$shell_rc"
-    fi
+    echo 'export DOTNET_ROOT="$HOME/.dotnet"' >> "$shell_rc"
+    echo 'export PATH="$PATH:$HOME/.dotnet"' >> "$shell_rc"
 
     echo -e "${GREEN}.NET SDK ${DOTNET_SDK_MAJOR} has been installed using the official install script!${NC}"
     return 0
@@ -284,9 +276,7 @@ fi
 DOTNET_TOOLS_PATH="$HOME/.dotnet/tools"
 
 # Ensure tools are available inside this script
-if ! echo "$PATH" | grep -q "$DOTNET_TOOLS_PATH"; then
-    export PATH="$PATH:$DOTNET_TOOLS_PATH"
-fi
+export PATH="$PATH:$DOTNET_TOOLS_PATH"
 
 # Silently uninstall other ikon tool packages if they exist
 dotnet tool uninstall IkonTool -g >/dev/null 2>&1 || true
