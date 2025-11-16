@@ -171,9 +171,10 @@ install_dotnet_if_needed() {
                     fi
                 fi
             else
-                echo -e "${RED}.NET SDK is not installed${NC}"
-                print_dotnet_install_instructions
-                return 1
+                echo -e "${YELLOW}apt-get not available, trying official install script...${NC}"
+                if ! install_dotnet_via_script; then
+                    return 1
+                fi
             fi
         elif [[ "$OSTYPE" == "darwin"* ]]; then
             echo -e "${YELLOW}Installing .NET SDK via Homebrew...${NC}"
@@ -268,6 +269,15 @@ if [ "$MAJOR_VERSION" -lt "$DOTNET_SDK_MAJOR" ]; then
     exit 1
 fi
 
+# Determine if dotnet is using the local script install path
+DOTNET_ROOT_DEFAULT="$HOME/.dotnet"
+DOTNET_BIN_PATH="$(command -v dotnet || true)"
+DOTNET_INSTALLED_LOCAL="false"
+
+if [[ "$DOTNET_BIN_PATH" == "$DOTNET_ROOT_DEFAULT/"* ]] || [[ -x "$DOTNET_ROOT_DEFAULT/dotnet" ]]; then
+    DOTNET_INSTALLED_LOCAL="true"
+fi
+
 # Determine the dotnet tools path and shell configuration file
 DOTNET_TOOLS_PATH="$HOME/.dotnet/tools"
 SHELL_RC="$(detect_shell_rc)"
@@ -293,14 +303,32 @@ if ! dotnet tool install ikon -g; then
     exit 1
 fi
 
-# Add to shell configuration file for future sessions (only if not already in PATH or in the config)
-if [[ "$PATH_ALREADY_CONFIGURED" == "false" ]]; then
-    if ! grep -q "$DOTNET_TOOLS_PATH" "$SHELL_RC" 2>/dev/null; then
-        echo "Adding dotnet tools path $DOTNET_TOOLS_PATH to $SHELL_RC for future sessions"
-        if [[ "$SHELL_NAME" == "fish" ]]; then
-            echo "set -gx PATH $DOTNET_TOOLS_PATH \$PATH" >> "$SHELL_RC"
-        else
-            echo "export PATH=\"$DOTNET_TOOLS_PATH:\$PATH\"" >> "$SHELL_RC"
+# Add to shell configuration file for future sessions
+# 1. Ensure tools path is in PATH
+if ! grep -q "$DOTNET_TOOLS_PATH" "$SHELL_RC" 2>/dev/null; then
+    echo "Adding dotnet tools path $DOTNET_TOOLS_PATH to $SHELL_RC for future sessions"
+    if [[ "$SHELL_NAME" == "fish" ]]; then
+        echo "set -gx PATH $DOTNET_TOOLS_PATH \$PATH" >> "$SHELL_RC"
+    else
+        echo "export PATH=\"$DOTNET_TOOLS_PATH:\$PATH\"" >> "$SHELL_RC"
+    fi
+fi
+
+# 2. If installed via script, persist DOTNET_ROOT and dotnet root on PATH
+if [[ "$DOTNET_INSTALLED_LOCAL" == "true" ]]; then
+    if [[ "$SHELL_NAME" == "fish" ]]; then
+        if ! grep -q "set -gx DOTNET_ROOT $DOTNET_ROOT_DEFAULT" "$SHELL_RC" 2>/dev/null; then
+            echo "set -gx DOTNET_ROOT $DOTNET_ROOT_DEFAULT" >> "$SHELL_RC"
+        fi
+        if ! grep -q "set -gx PATH $DOTNET_ROOT_DEFAULT" "$SHELL_RC" 2>/dev/null; then
+            echo "set -gx PATH $DOTNET_ROOT_DEFAULT \$PATH" >> "$SHELL_RC"
+        fi
+    else
+        if ! grep -q "DOTNET_ROOT" "$SHELL_RC" 2>/dev/null; then
+            echo "export DOTNET_ROOT=\"$DOTNET_ROOT_DEFAULT\"" >> "$SHELL_RC"
+        fi
+        if ! grep -q "$DOTNET_ROOT_DEFAULT" "$SHELL_RC" 2>/dev/null; then
+            echo "export PATH=\"$DOTNET_ROOT_DEFAULT:\$PATH\"" >> "$SHELL_RC"
         fi
     fi
 fi
@@ -323,14 +351,7 @@ else
 fi
 
 echo
-echo "Next step, to login to the Ikon backend, run:"
-
-if [[ "$PATH_ALREADY_CONFIGURED" == "false" ]]; then
-    if [[ "$SHELL_NAME" == "fish" ]]; then
-        echo -e "${YELLOW}set -gx PATH $DOTNET_TOOLS_PATH \$PATH; and ikon login${NC}"
-    else
-        echo -e "${YELLOW}export PATH=\"$DOTNET_TOOLS_PATH:\$PATH\" && ikon login${NC}"
-    fi
-else
-    echo -e "${YELLOW}ikon login${NC}"
-fi
+echo "Ikon tool installation completed."
+echo "Please restart your terminal (or open a new one), then run:"
+echo
+echo -e "${YELLOW}ikon login${NC}"
