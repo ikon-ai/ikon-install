@@ -100,7 +100,7 @@ print_dotnet_install_instructions() {
         fi
     elif [[ "$OSTYPE" == "darwin"* ]]; then
         echo "Please install .NET SDK ${DOTNET_SDK_MAJOR} with Homebrew:"
-        echo "brew install --cask dotnet-sdk@${DOTNET_SDK_MAJOR}"
+        echo "brew install --cask dotnet-sdk"
     else
         echo "Please install .NET SDK ${DOTNET_SDK_MAJOR} from: https://dotnet.microsoft.com/en-us/download/dotnet/${DOTNET_SDK_MAJOR}.0"
     fi
@@ -152,7 +152,7 @@ install_dotnet_if_needed() {
         elif [[ "$OSTYPE" == "darwin"* ]]; then
             echo -e "${YELLOW}Installing .NET SDK via Homebrew...${NC}"
             
-            if brew install --cask dotnet-sdk@${DOTNET_SDK_MAJOR}; then
+            if brew install --cask dotnet-sdk; then
                 echo -e "${GREEN}.NET SDK has been installed successfully!${NC}"
                 
                 if ! command -v dotnet &> /dev/null; then
