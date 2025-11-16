@@ -351,7 +351,12 @@ else
 fi
 
 echo
-echo "Ikon tool installation completed."
-echo "Please restart your terminal (or open a new one), then run:"
+echo -e "${GREEN}Ikon tool installation completed.${NC}"
 echo
-echo -e "${YELLOW}ikon login${NC}"
+echo "IMPORTANT:"
+echo "  1) Close this terminal window (or log out) and open a NEW terminal."
+echo "  2) In the new terminal, run the following command to sign in:"
+echo
+echo -e "     ${YELLOW}ikon login${NC}"
+echo
+echo "The ikon tool will only work after you have opened a new terminal session."
