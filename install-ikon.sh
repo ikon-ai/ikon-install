@@ -311,8 +311,24 @@ elif [[ "$OSTYPE" == "darwin"* ]]; then
         echo -e "${YELLOW}Warning: Failed to trust HTTPS development certificates${NC}"
     fi
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    if ! sudo dotnet dev-certs https --trust; then
-        echo -e "${YELLOW}Warning: Failed to trust HTTPS development certificates${NC}"
+    echo "Generating HTTPS development certificate (per-user)..."
+    if ! dotnet dev-certs https; then
+        echo -e "${YELLOW}Warning: Failed to generate HTTPS development certificates${NC}"
+    else
+        tmp_cert="$(mktemp)"
+        if dotnet dev-certs https -ep "$tmp_cert" --format PEM; then
+            echo "Installing HTTPS development certificate into Ubuntu trust store (requires sudo)..."
+            if sudo mkdir -p /usr/local/share/ca-certificates/aspnet && \
+               sudo cp "$tmp_cert" /usr/local/share/ca-certificates/aspnet/ikon-https-dev.crt && \
+               sudo update-ca-certificates; then
+                echo -e "${GREEN}HTTPS development certificate trusted by system CA store.${NC}"
+            else
+                echo -e "${YELLOW}Warning: Failed to install HTTPS development certificate into system trust store${NC}"
+            fi
+        else
+            echo -e "${YELLOW}Warning: Failed to export HTTPS development certificate for trust installation${NC}"
+        fi
+        rm -f "$tmp_cert"
     fi
 else
     echo -e "${YELLOW}Warning: Unsupported OS for HTTPS certificate trust${NC}"
