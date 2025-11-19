@@ -306,10 +306,16 @@ if [[ "$CI" == "true" ]]; then
     if ! dotnet dev-certs https; then
         echo -e "${YELLOW}Warning: Failed to generate HTTPS development certificates${NC}"
     fi
-else
+elif [[ "$OSTYPE" == "darwin"* ]]; then
     if ! dotnet dev-certs https --trust; then
         echo -e "${YELLOW}Warning: Failed to trust HTTPS development certificates${NC}"
     fi
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    if ! sudo dotnet dev-certs https --trust; then
+        echo -e "${YELLOW}Warning: Failed to trust HTTPS development certificates${NC}"
+    fi
+else
+    echo -e "${YELLOW}Warning: Unsupported OS for HTTPS certificate trust${NC}"
 fi
 
 echo
