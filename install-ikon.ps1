@@ -9,6 +9,45 @@ $dotnetSdkUrl = "https://builds.dotnet.microsoft.com/dotnet/Sdk/$DOTNET_SDK_VERS
 $nodeInstallerUrl = "https://nodejs.org/dist/v24.11.1/node-v24.11.1-x64.msi"
 $gitInstallerUrl = "https://github.com/git-for-windows/git/releases/download/v2.51.0.windows.2/Git-2.51.0.2-64-bit.exe"
 
+$skipConfirmation = $false
+if ($env:CI -eq "true") {
+    $skipConfirmation = $true
+}
+foreach ($arg in $args) {
+    if ($arg -eq "--yes" -or $arg -eq "-y") {
+        $skipConfirmation = $true
+        break
+    }
+}
+
+if (-not $skipConfirmation) {
+    Write-Host ""
+    Write-Host "====================================================================" -ForegroundColor Cyan
+    Write-Host "              Ikon Tool Installation Script" -ForegroundColor Cyan
+    Write-Host "====================================================================" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "This script will:" -ForegroundColor Yellow
+    Write-Host "  1. Check for and install .NET SDK $DOTNET_SDK_MAJOR (if not present or outdated)" -ForegroundColor White
+    Write-Host "  2. Check for and install Node.js (if not present)" -ForegroundColor White
+    Write-Host "  3. Check for and install Git (if not present)" -ForegroundColor White
+    Write-Host "  4. Install the Ikon command-line tool globally" -ForegroundColor White
+    Write-Host "  5. Trust HTTPS development certificates for localhost" -ForegroundColor White
+    Write-Host ""
+    Write-Host "Installation methods:" -ForegroundColor Yellow
+    Write-Host "  - First try: winget (Windows Package Manager)" -ForegroundColor White
+    Write-Host "  - Fallback: Direct download and installation" -ForegroundColor White
+    Write-Host ""
+    Write-Host "Note: Administrator privileges may be required for some installations." -ForegroundColor Yellow
+    Write-Host ""
+    
+    $response = Read-Host "Do you want to continue? (y/n)"
+    if ($response -notmatch '^[Yy]') {
+        Write-Host "Installation cancelled by user." -ForegroundColor Yellow
+        exit 0
+    }
+    Write-Host ""
+}
+
 function Refresh-EnvironmentPath {
     $machinePath = [System.Environment]::GetEnvironmentVariable("Path","Machine")
     $userPath = [System.Environment]::GetEnvironmentVariable("Path","User")
