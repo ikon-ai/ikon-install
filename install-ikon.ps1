@@ -6,6 +6,7 @@ $DOTNET_SDK_VERSION = "10.0.100"
 $DOTNET_SDK_MAJOR = 10
 
 $dotnetSdkUrl = "https://builds.dotnet.microsoft.com/dotnet/Sdk/$DOTNET_SDK_VERSION/dotnet-sdk-$DOTNET_SDK_VERSION-win-x64.exe"
+$nodeInstallerUrl = "https://nodejs.org/dist/v24.11.1/node-v24.11.1-x64.msi"
 $gitInstallerUrl = "https://github.com/git-for-windows/git/releases/download/v2.51.0.windows.2/Git-2.51.0.2-64-bit.exe"
 
 function Refresh-EnvironmentPath {
@@ -60,7 +61,7 @@ if ($needsDotnetInstall) {
     if ($wingetAvailable) {
         Write-Host "Installing .NET SDK $DOTNET_SDK_MAJOR using winget..." -ForegroundColor Yellow
         try {
-            winget install Microsoft.DotNet.SDK.$DOTNET_SDK_MAJOR --silent --accept-source-agreements --accept-package-agreements
+            winget install Microsoft.DotNet.SDK.$DOTNET_SDK_MAJOR --silent --accept-source-agreements --accept-package-agreements --disable-interactivity
             if ($LASTEXITCODE -eq 0) {
                 Write-Host ".NET SDK $DOTNET_SDK_MAJOR has been installed successfully!" -ForegroundColor Green
                 Refresh-EnvironmentPath
@@ -124,6 +125,92 @@ if ($needsDotnetInstall) {
     }
 }
 
+# Check if node is installed
+try {
+    $nodeVersion = node --version 2>$null
+    if (-not $nodeVersion) {
+        throw "node command not found"
+    }
+    Write-Host "Node.js $nodeVersion found" -ForegroundColor DarkGreen
+} catch {
+    Write-Host "Node.js is not installed. Installing..." -ForegroundColor Yellow
+    
+    $wingetAvailable = $false
+    try {
+        $wingetCheck = winget --version 2>$null
+        if ($wingetCheck) {
+            $wingetAvailable = $true
+        }
+    } catch {
+        $wingetAvailable = $false
+    }
+    
+    if ($wingetAvailable) {
+        Write-Host "Installing Node.js LTS using winget..." -ForegroundColor Yellow
+        try {
+            winget install OpenJS.NodeJS.LTS --silent --accept-source-agreements --accept-package-agreements --disable-interactivity
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "Node.js has been installed successfully!" -ForegroundColor Green
+                Refresh-EnvironmentPath
+                
+                try {
+                    $null = node --version 2>$null
+                    if (-not $?) {
+                        throw "node command still not available"
+                    }
+                } catch {
+                    Write-Host "Please restart your terminal and run this script again to complete the installation." -ForegroundColor Yellow
+                    Read-Host "Press Enter to exit"
+                    return 0
+                }
+            } else {
+                throw "winget install failed with exit code $LASTEXITCODE"
+            }
+        } catch {
+            Write-Host "Warning: Failed to install Node.js using winget" -ForegroundColor Yellow
+            Write-Host "Falling back to manual download..." -ForegroundColor Yellow
+            $wingetAvailable = $false
+        }
+    }
+    
+    # If winget is not available or failed, download and run the MSI installer
+    if (-not $wingetAvailable -or $LASTEXITCODE -ne 0) {
+        Write-Host "Downloading Node.js installer..." -ForegroundColor Yellow
+        $tempDir = [System.IO.Path]::GetTempPath()
+        $installerPath = Join-Path $tempDir "node-installer.msi"
+        
+        try {
+            $ProgressPreference = 'SilentlyContinue'
+            Invoke-WebRequest -Uri $nodeInstallerUrl -OutFile $installerPath -UseBasicParsing
+            $ProgressPreference = 'Continue'
+            Write-Host "Download complete. Running installer..." -ForegroundColor Yellow
+            Start-Process -FilePath "msiexec.exe" -Wait -ArgumentList "/i", $installerPath, "/quiet", "/norestart"
+            Write-Host "Node.js installer has completed!" -ForegroundColor Green
+            Refresh-EnvironmentPath
+            
+            try {
+                $null = node --version 2>$null
+                if (-not $?) {
+                    throw "node command still not available"
+                }
+            } catch {
+                Write-Host "Please restart your terminal and run this script again to complete the installation." -ForegroundColor Yellow
+                Read-Host "Press Enter to exit"
+                return 0
+            }
+        } catch {
+            Write-Host "Error: Failed to download or run the Node.js installer" -ForegroundColor Red
+            Write-Host $_.Exception.Message
+            Write-Host "Please manually download and install Node.js from: $nodeInstallerUrl" -ForegroundColor Yellow
+            return 1
+        } finally {
+            if (Test-Path $installerPath) {
+                Remove-Item $installerPath -ErrorAction SilentlyContinue
+            }
+        }
+    }
+}
+
 # Check if git is installed
 try {
     $gitVersion = git --version 2>$null
@@ -147,7 +234,7 @@ try {
     if ($wingetAvailable) {
         Write-Host "Installing Git using winget..." -ForegroundColor Yellow
         try {
-            winget install --id Git.Git -e --source winget --silent --accept-source-agreements --accept-package-agreements
+            winget install --id Git.Git -e --source winget --silent --accept-source-agreements --accept-package-agreements --disable-interactivity
             if ($LASTEXITCODE -eq 0) {
                 Write-Host "Git has been installed successfully!" -ForegroundColor Green
                 Refresh-EnvironmentPath

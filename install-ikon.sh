@@ -47,39 +47,6 @@ install_homebrew_if_needed() {
     return 0
 }
 
-install_git_if_needed() {
-    if ! command -v git &> /dev/null; then
-        if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-            if command -v apt-get &> /dev/null; then
-                echo -e "${YELLOW}Installing git...${NC}"
-                if sudo apt-get update && sudo apt-get install -y git; then
-                    echo -e "${GREEN}git installed successfully!${NC}"
-                else
-                    echo -e "${RED}Failed to install git${NC}"
-                    return 1
-                fi
-            else
-                echo -e "${RED}git is not installed. Please install git for your distribution.${NC}"
-                return 1
-            fi
-        elif [[ "$OSTYPE" == "darwin"* ]]; then
-            echo -e "${YELLOW}Installing git via Homebrew...${NC}"
-            if brew install git; then
-                echo -e "${GREEN}git installed successfully!${NC}"
-            else
-                echo -e "${RED}Failed to install git${NC}"
-                return 1
-            fi
-        else
-            echo -e "${RED}git is not installed. Please install git for your OS.${NC}"
-            return 1
-        fi
-    else
-        echo -e "${GREEN}git is already installed${NC}"
-    fi
-    return 0
-}
-
 print_dotnet_install_instructions() {
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
         if command -v apt-get &> /dev/null; then
@@ -99,51 +66,6 @@ print_dotnet_install_instructions() {
     fi
     echo
     echo "And then restart your terminal and run this script again!"
-}
-
-detect_shell_rc() {
-    # Determine shell config file for adding PATH changes
-    local current_shell="${SHELL##*/}"
-    local shell_rc=""
-
-    case "$current_shell" in
-        zsh)
-            if [[ "$OSTYPE" == "darwin"* ]]; then
-                shell_rc="$HOME/.zprofile"
-            else
-                shell_rc="$HOME/.zshrc"
-            fi
-            ;;
-        bash)
-            if [[ "$OSTYPE" == "darwin"* ]]; then
-                if [[ -f "$HOME/.bash_profile" ]]; then
-                    shell_rc="$HOME/.bash_profile"
-                else
-                    shell_rc="$HOME/.bashrc"
-                fi
-            else
-                shell_rc="$HOME/.bashrc"
-            fi
-            ;;
-        *)
-            # Fallback: try detected versions, then .profile
-            if [[ -n "$ZSH_VERSION" ]]; then
-                if [[ "$OSTYPE" == "darwin"* ]]; then
-                    shell_rc="$HOME/.zprofile"
-                else
-                    shell_rc="$HOME/.zshrc"
-                fi
-            elif [[ -n "$BASH_VERSION" ]]; then
-                shell_rc="$HOME/.bashrc"
-            else
-                shell_rc="$HOME/.profile"
-            fi
-            ;;
-    esac
-
-    mkdir -p "$(dirname "$shell_rc")" 2>/dev/null || true
-    touch "$shell_rc" 2>/dev/null || true
-    echo "$shell_rc"
 }
 
 install_dotnet_via_script() {
@@ -250,6 +172,120 @@ install_dotnet_if_needed() {
     return 0
 }
 
+install_node_if_needed() {
+    if ! command -v node &> /dev/null; then
+        if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+            if command -v apt-get &> /dev/null; then
+                echo -e "${YELLOW}Installing Node.js LTS...${NC}"
+                # Install from NodeSource repository for latest LTS
+                if curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && \
+                   sudo apt-get install -y nodejs; then
+                    echo -e "${GREEN}Node.js installed successfully!${NC}"
+                else
+                    echo -e "${RED}Failed to install Node.js${NC}"
+                    return 1
+                fi
+            else
+                echo -e "${RED}Node.js is not installed. Please install Node.js for your distribution.${NC}"
+                return 1
+            fi
+        elif [[ "$OSTYPE" == "darwin"* ]]; then
+            echo -e "${YELLOW}Installing Node.js LTS via Homebrew...${NC}"
+            if brew install node; then
+                echo -e "${GREEN}Node.js installed successfully!${NC}"
+            else
+                echo -e "${RED}Failed to install Node.js${NC}"
+                return 1
+            fi
+        else
+            echo -e "${RED}Node.js is not installed. Please install Node.js for your OS.${NC}"
+            return 1
+        fi
+    else
+        NODE_VERSION="$(node --version)"
+        echo -e "${GREEN}Node.js $NODE_VERSION is already installed${NC}"
+    fi
+    return 0
+}
+
+install_git_if_needed() {
+    if ! command -v git &> /dev/null; then
+        if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+            if command -v apt-get &> /dev/null; then
+                echo -e "${YELLOW}Installing git...${NC}"
+                if sudo apt-get update && sudo apt-get install -y git; then
+                    echo -e "${GREEN}git installed successfully!${NC}"
+                else
+                    echo -e "${RED}Failed to install git${NC}"
+                    return 1
+                fi
+            else
+                echo -e "${RED}git is not installed. Please install git for your distribution.${NC}"
+                return 1
+            fi
+        elif [[ "$OSTYPE" == "darwin"* ]]; then
+            echo -e "${YELLOW}Installing git via Homebrew...${NC}"
+            if brew install git; then
+                echo -e "${GREEN}git installed successfully!${NC}"
+            else
+                echo -e "${RED}Failed to install git${NC}"
+                return 1
+            fi
+        else
+            echo -e "${RED}git is not installed. Please install git for your OS.${NC}"
+            return 1
+        fi
+    else
+        echo -e "${GREEN}git is already installed${NC}"
+    fi
+    return 0
+}
+
+detect_shell_rc() {
+    # Determine shell config file for adding PATH changes
+    local current_shell="${SHELL##*/}"
+    local shell_rc=""
+
+    case "$current_shell" in
+        zsh)
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                shell_rc="$HOME/.zprofile"
+            else
+                shell_rc="$HOME/.zshrc"
+            fi
+            ;;
+        bash)
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                if [[ -f "$HOME/.bash_profile" ]]; then
+                    shell_rc="$HOME/.bash_profile"
+                else
+                    shell_rc="$HOME/.bashrc"
+                fi
+            else
+                shell_rc="$HOME/.bashrc"
+            fi
+            ;;
+        *)
+            # Fallback: try detected versions, then .profile
+            if [[ -n "$ZSH_VERSION" ]]; then
+                if [[ "$OSTYPE" == "darwin"* ]]; then
+                    shell_rc="$HOME/.zprofile"
+                else
+                    shell_rc="$HOME/.zshrc"
+                fi
+            elif [[ -n "$BASH_VERSION" ]]; then
+                shell_rc="$HOME/.bashrc"
+            else
+                shell_rc="$HOME/.profile"
+            fi
+            ;;
+    esac
+
+    mkdir -p "$(dirname "$shell_rc")" 2>/dev/null || true
+    touch "$shell_rc" 2>/dev/null || true
+    echo "$shell_rc"
+}
+
 echo "Checking pre-requisites for Ikon tool installation..."
 
 SHELL_RC="$(detect_shell_rc)"
@@ -259,8 +295,9 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     install_homebrew_if_needed || exit 1
 fi
 
-install_git_if_needed || exit 1
 install_dotnet_if_needed "$SHELL_RC" || exit 1
+install_node_if_needed || exit 1
+install_git_if_needed || exit 1
 
 # Check dotnet version (final verification after installation)
 DOTNET_VERSION="$(dotnet --version)"
