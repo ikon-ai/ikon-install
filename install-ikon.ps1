@@ -25,9 +25,8 @@ if (-not $skipConfirmation) {
     Write-Host "  1. Check for and install .NET SDK $DOTNET_SDK_MAJOR (if not present or outdated)" -ForegroundColor White
     Write-Host "  2. Check for and install Node.js (if not present)" -ForegroundColor White
     Write-Host "  3. Check for and install Git (if not present)" -ForegroundColor White
-    Write-Host "  4. Check for and install ngrok (if not present)" -ForegroundColor White
-    Write-Host "  5. Install the Ikon command-line tool" -ForegroundColor White
-    Write-Host "  6. Trust HTTPS development certificates for localhost" -ForegroundColor White
+    Write-Host "  4. Install the Ikon command-line tool" -ForegroundColor White
+    Write-Host "  5. Trust HTTPS development certificates for localhost" -ForegroundColor White
     Write-Host ""
     Write-Host "Installation method: winget (Windows Package Manager)" -ForegroundColor Yellow
     Write-Host ""
@@ -172,25 +171,6 @@ try {
         Write-Host "Please restart your terminal and run this script again to complete the installation." -ForegroundColor Yellow
         Read-Host "Press Enter to exit"
         return 0
-    }
-}
-
-# Check if ngrok is installed
-try {
-    $ngrokVersion = ngrok version 2>$null
-    if (-not $ngrokVersion) {
-        throw "ngrok command not found"
-    }
-    Write-Host "ngrok $ngrokVersion found" -ForegroundColor DarkGreen
-} catch {
-    Write-Host "ngrok is not installed. Installing..." -ForegroundColor Yellow
-    Write-Host "Installing ngrok using winget..." -ForegroundColor Yellow
-    try {
-        winget install --id Ngrok.Ngrok -e --source winget --silent --accept-source-agreements --accept-package-agreements --disable-interactivity 2>$null
-        Write-Host "ngrok installation completed" -ForegroundColor Green
-    } catch {
-        Write-Host "Warning: ngrok installation encountered an issue" -ForegroundColor Yellow
-        Write-Host "If you need ngrok, install it manually from https://ngrok.com/download" -ForegroundColor Yellow
     }
 }
 
