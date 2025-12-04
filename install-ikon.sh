@@ -33,8 +33,9 @@ if [[ "$SKIP_CONFIRMATION" != "true" ]]; then
     echo -e "  1. Check for and install .NET SDK ${DOTNET_SDK_MAJOR} (if not present or outdated)"
     echo -e "  2. Check for and install Node.js (if not present)"
     echo -e "  3. Check for and install Git (if not present)"
-    echo -e "  4. Install the Ikon command-line tool globally"
-    echo -e "  5. Trust HTTPS development certificates for localhost"
+    echo -e "  4. Check for and install ngrok (if not present)"
+    echo -e "  5. Install the Ikon command-line tool"
+    echo -e "  6. Trust HTTPS development certificates for localhost"
     echo
     if [[ "$OSTYPE" == "darwin"* ]]; then
         echo -e "${YELLOW}Installation methods (macOS):${NC}"
@@ -287,6 +288,44 @@ install_git_if_needed() {
     return 0
 }
 
+install_ngrok_if_needed() {
+    if ! command -v ngrok &> /dev/null; then
+        if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+            if command -v apt-get &> /dev/null; then
+                echo -e "${YELLOW}Installing ngrok...${NC}"
+                if curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc \
+                    | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null \
+                    && echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" \
+                    | sudo tee /etc/apt/sources.list.d/ngrok.list \
+                    && sudo apt-get update \
+                    && sudo apt-get install -y ngrok; then
+                    echo -e "${GREEN}ngrok installed successfully!${NC}"
+                else
+                    echo -e "${RED}Failed to install ngrok${NC}"
+                    return 1
+                fi
+            else
+                echo -e "${RED}ngrok is not installed. Please install ngrok for your distribution.${NC}"
+                return 1
+            fi
+        elif [[ "$OSTYPE" == "darwin"* ]]; then
+            echo -e "${YELLOW}Installing ngrok via Homebrew...${NC}"
+            if brew install ngrok; then
+                echo -e "${GREEN}ngrok installed successfully!${NC}"
+            else
+                echo -e "${RED}Failed to install ngrok${NC}"
+                return 1
+            fi
+        else
+            echo -e "${RED}ngrok is not installed. Please install ngrok for your OS.${NC}"
+            return 1
+        fi
+    else
+        echo -e "${GREEN}ngrok is already installed${NC}"
+    fi
+    return 0
+}
+
 detect_shell_rc() {
     # Determine shell config file for adding PATH changes
     local current_shell="${SHELL##*/}"
@@ -344,6 +383,7 @@ fi
 install_dotnet_if_needed "$SHELL_RC" || exit 1
 install_node_if_needed || exit 1
 install_git_if_needed || exit 1
+install_ngrok_if_needed || exit 1
 
 # Check dotnet version (final verification after installation)
 DOTNET_VERSION="$(dotnet --version)"

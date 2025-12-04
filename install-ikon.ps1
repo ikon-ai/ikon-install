@@ -2,12 +2,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$DOTNET_SDK_VERSION = "10.0.100"
 $DOTNET_SDK_MAJOR = 10
-
-$dotnetSdkUrl = "https://builds.dotnet.microsoft.com/dotnet/Sdk/$DOTNET_SDK_VERSION/dotnet-sdk-$DOTNET_SDK_VERSION-win-x64.exe"
-$nodeInstallerUrl = "https://nodejs.org/dist/v24.11.1/node-v24.11.1-x64.msi"
-$gitInstallerUrl = "https://github.com/git-for-windows/git/releases/download/v2.51.0.windows.2/Git-2.51.0.2-64-bit.exe"
 
 $skipConfirmation = $false
 if ($env:CI -eq "true") {
@@ -30,12 +25,11 @@ if (-not $skipConfirmation) {
     Write-Host "  1. Check for and install .NET SDK $DOTNET_SDK_MAJOR (if not present or outdated)" -ForegroundColor White
     Write-Host "  2. Check for and install Node.js (if not present)" -ForegroundColor White
     Write-Host "  3. Check for and install Git (if not present)" -ForegroundColor White
-    Write-Host "  4. Install the Ikon command-line tool globally" -ForegroundColor White
-    Write-Host "  5. Trust HTTPS development certificates for localhost" -ForegroundColor White
+    Write-Host "  4. Check for and install ngrok (if not present)" -ForegroundColor White
+    Write-Host "  5. Install the Ikon command-line tool" -ForegroundColor White
+    Write-Host "  6. Trust HTTPS development certificates for localhost" -ForegroundColor White
     Write-Host ""
-    Write-Host "Installation methods:" -ForegroundColor Yellow
-    Write-Host "  - First try: winget (Windows Package Manager)" -ForegroundColor White
-    Write-Host "  - Fallback: Direct download and installation" -ForegroundColor White
+    Write-Host "Installation method: winget (Windows Package Manager)" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "Note: Administrator privileges may be required for some installations." -ForegroundColor Yellow
     Write-Host ""
@@ -60,6 +54,18 @@ function Refresh-EnvironmentPath {
     } else { 
         $env:Path 
     }
+}
+
+# Check if winget is available
+try {
+    $wingetCheck = winget --version 2>$null
+    if (-not $wingetCheck) {
+        throw "winget not found"
+    }
+} catch {
+    Write-Host "Error: winget (Windows Package Manager) is not available" -ForegroundColor Red
+    Write-Host "Please install winget from the Microsoft Store (App Installer) or Windows 11" -ForegroundColor Yellow
+    return 1
 }
 
 Write-Host "Checking pre-requisites for Ikon tool installation..."
@@ -87,80 +93,25 @@ try {
 }
 
 if ($needsDotnetInstall) {
-    $wingetAvailable = $false
+    Write-Host "Installing .NET SDK $DOTNET_SDK_MAJOR using winget..." -ForegroundColor Yellow
+    winget install Microsoft.DotNet.SDK.$DOTNET_SDK_MAJOR --silent --accept-source-agreements --accept-package-agreements --disable-interactivity
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Error: Failed to install .NET SDK using winget" -ForegroundColor Red
+        return 1
+    }
+    Write-Host ".NET SDK $DOTNET_SDK_MAJOR has been installed successfully!" -ForegroundColor Green
+    Refresh-EnvironmentPath
+    
     try {
-        $wingetCheck = winget --version 2>$null
-        if ($wingetCheck) {
-            $wingetAvailable = $true
+        $dotnetVersion = dotnet --version 2>$null
+        if (-not $dotnetVersion) {
+            throw "dotnet command still not available"
         }
+        Write-Host ".NET SDK $dotnetVersion found" -ForegroundColor DarkGreen
     } catch {
-        $wingetAvailable = $false
-    }
-    
-    if ($wingetAvailable) {
-        Write-Host "Installing .NET SDK $DOTNET_SDK_MAJOR using winget..." -ForegroundColor Yellow
-        try {
-            winget install Microsoft.DotNet.SDK.$DOTNET_SDK_MAJOR --silent --accept-source-agreements --accept-package-agreements --disable-interactivity
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host ".NET SDK $DOTNET_SDK_MAJOR has been installed successfully!" -ForegroundColor Green
-                Refresh-EnvironmentPath
-                
-                try {
-                    $dotnetVersion = dotnet --version 2>$null
-                    if (-not $dotnetVersion) {
-                        throw "dotnet command still not available"
-                    }
-                    Write-Host ".NET SDK $dotnetVersion found" -ForegroundColor DarkGreen
-                } catch {
-                    Write-Host "Please restart your terminal and run this script again to complete the Ikon tool installation." -ForegroundColor Yellow
-                    Read-Host "Press Enter to exit"
-                    return 0
-                }
-            } else {
-                throw "winget install failed with exit code $LASTEXITCODE"
-            }
-        } catch {
-            Write-Host "Warning: Failed to install .NET SDK using winget" -ForegroundColor Yellow
-            Write-Host "Falling back to manual download..." -ForegroundColor Yellow
-        }
-    }
-    
-    # If winget is not available or failed, download and run the installer
-    if (-not $wingetAvailable -or $LASTEXITCODE -ne 0) {
-        Write-Host "Downloading .NET SDK $DOTNET_SDK_MAJOR installer..." -ForegroundColor Yellow
-        $tempDir = [System.IO.Path]::GetTempPath()
-        $installerPath = Join-Path $tempDir "dotnet-sdk-8-installer.exe"
-        
-        try {
-            $ProgressPreference = 'SilentlyContinue'
-            Invoke-WebRequest -Uri $dotnetSdkUrl -OutFile $installerPath -UseBasicParsing
-            $ProgressPreference = 'Continue'
-            Write-Host "Download complete. Running installer..." -ForegroundColor Yellow
-            Start-Process -FilePath $installerPath -Wait -ArgumentList "/quiet", "/norestart"
-            Write-Host ".NET SDK $DOTNET_SDK_MAJOR installer has completed!" -ForegroundColor Green
-            Refresh-EnvironmentPath
-            
-            try {
-                $dotnetVersion = dotnet --version 2>$null
-                if (-not $dotnetVersion) {
-                    throw "dotnet command still not available"
-                }
-                Write-Host ".NET SDK $dotnetVersion found" -ForegroundColor DarkGreen
-            } catch {
-                Write-Host "Please restart your terminal and run this script again to complete the Ikon tool installation." -ForegroundColor Yellow
-                Read-Host "Press Enter to exit"
-                return 0
-            }
-        } catch {
-            Write-Host "Error: Failed to download or run the .NET SDK installer" -ForegroundColor Red
-            Write-Host $_.Exception.Message
-            Write-Host "Please manually download and install .NET SDK 8 from: $dotnetSdkUrl" -ForegroundColor Yellow
-            return 1
-        } finally {
-            if (Test-Path $installerPath) {
-                Remove-Item $installerPath -ErrorAction SilentlyContinue
-            }
-        }
+        Write-Host "Please restart your terminal and run this script again to complete the Ikon tool installation." -ForegroundColor Yellow
+        Read-Host "Press Enter to exit"
+        return 0
     }
 }
 
@@ -173,80 +124,24 @@ try {
     Write-Host "Node.js $nodeVersion found" -ForegroundColor DarkGreen
 } catch {
     Write-Host "Node.js is not installed. Installing..." -ForegroundColor Yellow
+    Write-Host "Installing Node.js LTS using winget..." -ForegroundColor Yellow
+    winget install OpenJS.NodeJS.LTS --silent --accept-source-agreements --accept-package-agreements --disable-interactivity
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Error: Failed to install Node.js using winget" -ForegroundColor Red
+        return 1
+    }
+    Write-Host "Node.js has been installed successfully!" -ForegroundColor Green
+    Refresh-EnvironmentPath
     
-    $wingetAvailable = $false
     try {
-        $wingetCheck = winget --version 2>$null
-        if ($wingetCheck) {
-            $wingetAvailable = $true
+        $null = node --version 2>$null
+        if (-not $?) {
+            throw "node command still not available"
         }
     } catch {
-        $wingetAvailable = $false
-    }
-    
-    if ($wingetAvailable) {
-        Write-Host "Installing Node.js LTS using winget..." -ForegroundColor Yellow
-        try {
-            winget install OpenJS.NodeJS.LTS --silent --accept-source-agreements --accept-package-agreements --disable-interactivity
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "Node.js has been installed successfully!" -ForegroundColor Green
-                Refresh-EnvironmentPath
-                
-                try {
-                    $null = node --version 2>$null
-                    if (-not $?) {
-                        throw "node command still not available"
-                    }
-                } catch {
-                    Write-Host "Please restart your terminal and run this script again to complete the installation." -ForegroundColor Yellow
-                    Read-Host "Press Enter to exit"
-                    return 0
-                }
-            } else {
-                throw "winget install failed with exit code $LASTEXITCODE"
-            }
-        } catch {
-            Write-Host "Warning: Failed to install Node.js using winget" -ForegroundColor Yellow
-            Write-Host "Falling back to manual download..." -ForegroundColor Yellow
-            $wingetAvailable = $false
-        }
-    }
-    
-    # If winget is not available or failed, download and run the MSI installer
-    if (-not $wingetAvailable -or $LASTEXITCODE -ne 0) {
-        Write-Host "Downloading Node.js installer..." -ForegroundColor Yellow
-        $tempDir = [System.IO.Path]::GetTempPath()
-        $installerPath = Join-Path $tempDir "node-installer.msi"
-        
-        try {
-            $ProgressPreference = 'SilentlyContinue'
-            Invoke-WebRequest -Uri $nodeInstallerUrl -OutFile $installerPath -UseBasicParsing
-            $ProgressPreference = 'Continue'
-            Write-Host "Download complete. Running installer..." -ForegroundColor Yellow
-            Start-Process -FilePath "msiexec.exe" -Wait -ArgumentList "/i", $installerPath, "/quiet", "/norestart"
-            Write-Host "Node.js installer has completed!" -ForegroundColor Green
-            Refresh-EnvironmentPath
-            
-            try {
-                $null = node --version 2>$null
-                if (-not $?) {
-                    throw "node command still not available"
-                }
-            } catch {
-                Write-Host "Please restart your terminal and run this script again to complete the installation." -ForegroundColor Yellow
-                Read-Host "Press Enter to exit"
-                return 0
-            }
-        } catch {
-            Write-Host "Error: Failed to download or run the Node.js installer" -ForegroundColor Red
-            Write-Host $_.Exception.Message
-            Write-Host "Please manually download and install Node.js from: $nodeInstallerUrl" -ForegroundColor Yellow
-            return 1
-        } finally {
-            if (Test-Path $installerPath) {
-                Remove-Item $installerPath -ErrorAction SilentlyContinue
-            }
-        }
+        Write-Host "Please restart your terminal and run this script again to complete the installation." -ForegroundColor Yellow
+        Read-Host "Press Enter to exit"
+        return 0
     }
 }
 
@@ -259,80 +154,43 @@ try {
     Write-Host "Git $gitVersion found" -ForegroundColor DarkGreen
 } catch {
     Write-Host "Git is not installed. Installing..." -ForegroundColor Yellow
+    Write-Host "Installing Git using winget..." -ForegroundColor Yellow
+    winget install --id Git.Git -e --source winget --silent --accept-source-agreements --accept-package-agreements --disable-interactivity
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Error: Failed to install Git using winget" -ForegroundColor Red
+        return 1
+    }
+    Write-Host "Git has been installed successfully!" -ForegroundColor Green
+    Refresh-EnvironmentPath
     
-    $wingetAvailable = $false
     try {
-        $wingetCheck = winget --version 2>$null
-        if ($wingetCheck) {
-            $wingetAvailable = $true
+        $null = git --version 2>$null
+        if (-not $?) {
+            throw "git command still not available"
         }
     } catch {
-        $wingetAvailable = $false
+        Write-Host "Please restart your terminal and run this script again to complete the installation." -ForegroundColor Yellow
+        Read-Host "Press Enter to exit"
+        return 0
     }
-    
-    if ($wingetAvailable) {
-        Write-Host "Installing Git using winget..." -ForegroundColor Yellow
-        try {
-            winget install --id Git.Git -e --source winget --silent --accept-source-agreements --accept-package-agreements --disable-interactivity
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "Git has been installed successfully!" -ForegroundColor Green
-                Refresh-EnvironmentPath
-                
-                try {
-                    $null = git --version 2>$null
-                    if (-not $?) {
-                        throw "git command still not available"
-                    }
-                } catch {
-                    Write-Host "Please restart your terminal and run this script again to complete the installation." -ForegroundColor Yellow
-                    Read-Host "Press Enter to exit"
-                    return 0
-                }
-            } else {
-                throw "winget install failed with exit code $LASTEXITCODE"
-            }
-        } catch {
-            Write-Host "Warning: Failed to install Git using winget" -ForegroundColor Yellow
-            Write-Host "Falling back to manual download..." -ForegroundColor Yellow
-            $wingetAvailable = $false
-        }
+}
+
+# Check if ngrok is installed
+try {
+    $ngrokVersion = ngrok version 2>$null
+    if (-not $ngrokVersion) {
+        throw "ngrok command not found"
     }
-    
-    # If winget is not available or failed, download and run the installer
-    if (-not $wingetAvailable -or $LASTEXITCODE -ne 0) {
-        Write-Host "Downloading Git installer..." -ForegroundColor Yellow
-        $tempDir = [System.IO.Path]::GetTempPath()
-        $installerPath = Join-Path $tempDir "git-installer.exe"
-        
-        try {
-            $ProgressPreference = 'SilentlyContinue'
-            Invoke-WebRequest -Uri $gitInstallerUrl -OutFile $installerPath -UseBasicParsing
-            $ProgressPreference = 'Continue'
-            Write-Host "Download complete. Running installer..." -ForegroundColor Yellow
-            Start-Process -FilePath $installerPath -Wait -ArgumentList "/VERYSILENT", "/NORESTART"
-            Write-Host "Git installer has completed!" -ForegroundColor Green
-            Refresh-EnvironmentPath
-            
-            try {
-                $null = git --version 2>$null
-                if (-not $?) {
-                    throw "git command still not available"
-                }
-            } catch {
-                Write-Host "Please restart your terminal and run this script again to complete the installation." -ForegroundColor Yellow
-                Read-Host "Press Enter to exit"
-                return 0
-            }
-        } catch {
-            Write-Host "Error: Failed to download or run the Git installer" -ForegroundColor Red
-            Write-Host $_.Exception.Message
-            Write-Host "Please manually download and install Git from: $gitInstallerUrl" -ForegroundColor Yellow
-            return 1
-        } finally {
-            if (Test-Path $installerPath) {
-                Remove-Item $installerPath -ErrorAction SilentlyContinue
-            }
-        }
+    Write-Host "ngrok $ngrokVersion found" -ForegroundColor DarkGreen
+} catch {
+    Write-Host "ngrok is not installed. Installing..." -ForegroundColor Yellow
+    Write-Host "Installing ngrok using winget..." -ForegroundColor Yellow
+    try {
+        winget install --id Ngrok.Ngrok -e --source winget --silent --accept-source-agreements --accept-package-agreements --disable-interactivity 2>$null
+        Write-Host "ngrok installation completed" -ForegroundColor Green
+    } catch {
+        Write-Host "Warning: ngrok installation encountered an issue" -ForegroundColor Yellow
+        Write-Host "If you need ngrok, install it manually from https://ngrok.com/download" -ForegroundColor Yellow
     }
 }
 
