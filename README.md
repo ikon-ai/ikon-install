@@ -19,7 +19,7 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; iwr "https://ikon.live/install
 Open Terminal and run:
 
 ```bash
-curl -fsSL https://ikon.live/install.sh | bash
+curl -fsSL https://ikon.live/install.sh -o install-ikon.sh && bash install-ikon.sh
 ```
 
 ### Linux
@@ -27,7 +27,7 @@ curl -fsSL https://ikon.live/install.sh | bash
 Open your preferred shell and run:
 
 ```bash
-curl -fsSL https://ikon.live/install.sh | bash
+curl -fsSL https://ikon.live/install.sh -o install-ikon.sh && bash install-ikon.sh
 ```
 
 ## Log in with the Ikon tool

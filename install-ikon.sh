@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# curl -fsSL https://ikon.live/install.sh | bash
+# curl -fsSL https://ikon.live/install.sh -o install-ikon.sh && bash install-ikon.sh
 
 DOTNET_SDK_MAJOR="10"
 
