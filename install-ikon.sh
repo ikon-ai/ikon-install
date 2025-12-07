@@ -48,7 +48,7 @@ if [[ "$SKIP_CONFIRMATION" != "true" ]]; then
     echo -e "${YELLOW}Note: Administrator privileges (sudo) may be required for some installations.${NC}"
     echo
     
-    read -p "Do you want to continue? (y/n) " -n 1 -r
+    read -p "Do you want to continue? (y/n) " -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         echo -e "${YELLOW}Installation cancelled by user.${NC}"
