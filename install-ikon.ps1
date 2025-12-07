@@ -36,7 +36,7 @@ if (-not $skipConfirmation) {
     $response = Read-Host "Do you want to continue? (y/n)"
     if ($response -notmatch '^[Yy]') {
         Write-Host "Installation cancelled by user." -ForegroundColor Yellow
-        exit 0
+        return 1
     }
     Write-Host ""
 }
