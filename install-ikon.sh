@@ -3,6 +3,7 @@
 # bash <(curl -fsSL https://ikon.live/install.sh)
 
 DOTNET_SDK_MAJOR="10"
+NODE_MAJOR="24"
 
 set -e
 
@@ -31,7 +32,7 @@ if [[ "$SKIP_CONFIRMATION" != "true" ]]; then
     echo
     echo -e "${YELLOW}This script will:${NC}"
     echo -e "  1. Check for and install .NET SDK ${DOTNET_SDK_MAJOR} (if not present or outdated)"
-    echo -e "  2. Check for and install Node.js (if not present)"
+    echo -e "  2. Check for and install Node.js ${NODE_MAJOR} (if not present or outdated)"
     echo -e "  3. Check for and install Git (if not present)"
     echo -e "  4. Install the Ikon command-line tool"
     echo -e "  5. Trust HTTPS development certificates for localhost"
@@ -219,12 +220,31 @@ install_dotnet_if_needed() {
 }
 
 install_node_if_needed() {
-    if ! command -v node &> /dev/null; then
+    local needs_install=false
+    
+    # Check if node exists and get version
+    if command -v node &> /dev/null; then
+        NODE_VERSION="$(node --version 2>/dev/null || echo "v0.0.0")"
+        # Remove 'v' prefix and get major version
+        MAJOR_VERSION="$(echo "$NODE_VERSION" | sed 's/^v//' | cut -d'.' -f1)"
+        
+        if [ "$MAJOR_VERSION" -lt "$NODE_MAJOR" ]; then
+            echo -e "${YELLOW}Node.js version $NODE_VERSION found, but version ${NODE_MAJOR} or higher is required${NC}"
+            needs_install=true
+        else
+            echo -e "${GREEN}Node.js $NODE_VERSION is already installed${NC}"
+            return 0
+        fi
+    else
+        needs_install=true
+    fi
+    
+    if [[ "$needs_install" == "true" ]]; then
         if [[ "$OSTYPE" == "linux-gnu"* ]]; then
             if command -v apt-get &> /dev/null; then
-                echo -e "${YELLOW}Installing Node.js LTS...${NC}"
-                # Install from NodeSource repository for latest LTS
-                if curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && \
+                echo -e "${YELLOW}Installing Node.js ${NODE_MAJOR}...${NC}"
+                # Install specific major version from NodeSource repository
+                if curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | sudo -E bash - && \
                    sudo apt-get install -y nodejs; then
                     echo -e "${GREEN}Node.js installed successfully!${NC}"
                 else
@@ -232,24 +252,27 @@ install_node_if_needed() {
                     return 1
                 fi
             else
-                echo -e "${RED}Node.js is not installed. Please install Node.js for your distribution.${NC}"
+                echo -e "${RED}Node.js is not installed. Please install Node.js ${NODE_MAJOR} or higher for your distribution.${NC}"
                 return 1
             fi
         elif [[ "$OSTYPE" == "darwin"* ]]; then
-            echo -e "${YELLOW}Installing Node.js LTS via Homebrew...${NC}"
-            if brew install node; then
+            echo -e "${YELLOW}Installing Node.js ${NODE_MAJOR} via Homebrew...${NC}"
+            # Homebrew node formula typically installs the latest stable version
+            if brew install node@${NODE_MAJOR}; then
                 echo -e "${GREEN}Node.js installed successfully!${NC}"
             else
-                echo -e "${RED}Failed to install Node.js${NC}"
-                return 1
+                echo -e "${YELLOW}node@${NODE_MAJOR} not available, trying latest node...${NC}"
+                if brew install node; then
+                    echo -e "${GREEN}Node.js installed successfully!${NC}"
+                else
+                    echo -e "${RED}Failed to install Node.js${NC}"
+                    return 1
+                fi
             fi
         else
-            echo -e "${RED}Node.js is not installed. Please install Node.js for your OS.${NC}"
+            echo -e "${RED}Node.js is not installed. Please install Node.js ${NODE_MAJOR} or higher for your OS.${NC}"
             return 1
         fi
-    else
-        NODE_VERSION="$(node --version)"
-        echo -e "${GREEN}Node.js $NODE_VERSION is already installed${NC}"
     fi
     return 0
 }

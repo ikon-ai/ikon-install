@@ -3,6 +3,7 @@
 $ErrorActionPreference = "Stop"
 
 $DOTNET_SDK_MAJOR = 10
+$NODE_MAJOR = 24
 
 $skipConfirmation = $false
 if ($env:CI -eq "true") {
@@ -23,7 +24,7 @@ if (-not $skipConfirmation) {
     Write-Host ""
     Write-Host "This script will:" -ForegroundColor Yellow
     Write-Host "  1. Check for and install .NET SDK $DOTNET_SDK_MAJOR (if not present or outdated)" -ForegroundColor White
-    Write-Host "  2. Check for and install Node.js (if not present)" -ForegroundColor White
+    Write-Host "  2. Check for and install Node.js $NODE_MAJOR (if not present or outdated)" -ForegroundColor White
     Write-Host "  3. Check for and install Git (if not present)" -ForegroundColor White
     Write-Host "  4. Install the Ikon command-line tool" -ForegroundColor White
     Write-Host "  5. Trust HTTPS development certificates for localhost" -ForegroundColor White
@@ -115,15 +116,30 @@ if ($needsDotnetInstall) {
 }
 
 # Check if node is installed
+$needsNodeInstall = $false
+$nodeVersion = $null
+
 try {
     $nodeVersion = node --version 2>$null
     if (-not $nodeVersion) {
         throw "node command not found"
     }
-    Write-Host "Node.js $nodeVersion found" -ForegroundColor DarkGreen
+    
+    # Remove 'v' prefix and get major version
+    $majorVersion = [int]($nodeVersion.TrimStart('v').Split('.')[0])
+    if ($majorVersion -lt $NODE_MAJOR) {
+        Write-Host "Node.js version $nodeVersion found, but version $NODE_MAJOR or higher is required" -ForegroundColor Yellow
+        $needsNodeInstall = $true
+    } else {
+        Write-Host "Node.js $nodeVersion found" -ForegroundColor DarkGreen
+    }
 } catch {
-    Write-Host "Node.js is not installed. Installing..." -ForegroundColor Yellow
-    Write-Host "Installing Node.js LTS using winget..." -ForegroundColor Yellow
+    Write-Host "Node.js is not installed." -ForegroundColor Yellow
+    $needsNodeInstall = $true
+}
+
+if ($needsNodeInstall) {
+    Write-Host "Installing Node.js $NODE_MAJOR using winget..." -ForegroundColor Yellow
     winget install OpenJS.NodeJS.LTS --silent --accept-source-agreements --accept-package-agreements --disable-interactivity
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Error: Failed to install Node.js using winget" -ForegroundColor Red
@@ -133,10 +149,11 @@ try {
     Refresh-EnvironmentPath
     
     try {
-        $null = node --version 2>$null
-        if (-not $?) {
+        $nodeVersion = node --version 2>$null
+        if (-not $nodeVersion) {
             throw "node command still not available"
         }
+        Write-Host "Node.js $nodeVersion found" -ForegroundColor DarkGreen
     } catch {
         Write-Host "Please restart your terminal and run this script again to complete the installation." -ForegroundColor Yellow
         Read-Host "Press Enter to exit"
