@@ -220,6 +220,7 @@ install_dotnet_if_needed() {
 }
 
 install_node_if_needed() {
+    local shell_rc="$1"
     local needs_install=false
     
     # Check if node exists and get version
@@ -268,6 +269,25 @@ install_node_if_needed() {
                     echo -e "${RED}Failed to install Node.js${NC}"
                     return 1
                 fi
+            fi
+
+            # Handle keg-only installs by adding the correct prefix to PATH
+            local node_prefix
+            node_prefix="$(brew --prefix node@${NODE_MAJOR} 2>/dev/null || brew --prefix node 2>/dev/null)"
+
+            if [[ -n "$node_prefix" ]]; then
+                export PATH="$node_prefix/bin:$PATH"
+
+                if ! grep -q "$node_prefix/bin" "$shell_rc" 2>/dev/null; then
+                    echo "Adding Node.js ($node_prefix/bin) to PATH in $shell_rc"
+                    {
+                        echo
+                        echo '# Added by Ikon installer – Node.js'
+                        echo "export PATH=\"$node_prefix/bin:\$PATH\""
+                    } >> "$shell_rc"
+                fi
+            else
+                echo -e "${YELLOW}Warning: Unable to determine Homebrew Node.js prefix; PATH not updated.${NC}"
             fi
         else
             echo -e "${RED}Node.js is not installed. Please install Node.js ${NODE_MAJOR} or higher for your OS.${NC}"
@@ -365,7 +385,7 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
 fi
 
 install_dotnet_if_needed "$SHELL_RC" || exit 1
-install_node_if_needed || exit 1
+install_node_if_needed "$SHELL_RC" || exit 1
 install_git_if_needed || exit 1
 
 # Check dotnet version (final verification after installation)
