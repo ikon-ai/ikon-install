@@ -279,7 +279,7 @@ install_node_if_needed() {
 }
 
 install_git_if_needed() {
-    if ! command -v git &> /dev/null; then
+    if ! git --version &> /dev/null; then
         if [[ "$OSTYPE" == "linux-gnu"* ]]; then
             if command -v apt-get &> /dev/null; then
                 echo -e "${YELLOW}Installing git...${NC}"
@@ -303,7 +303,7 @@ install_git_if_needed() {
             echo -e "${YELLOW}Waiting for installation to complete...${NC}"
             local max_wait=600  # 10 minutes max
             local waited=0
-            while ! command -v git &> /dev/null; do
+            while ! git --version &> /dev/null; do
                 if [ $waited -ge $max_wait ]; then
                     echo -e "${RED}Timed out waiting for Xcode Command Line Tools installation.${NC}"
                     echo -e "${YELLOW}Please complete the installation manually and run this script again.${NC}"
