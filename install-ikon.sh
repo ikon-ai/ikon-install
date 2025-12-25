@@ -39,7 +39,8 @@ if [[ "$SKIP_CONFIRMATION" != "true" ]]; then
     echo
     if [[ "$OSTYPE" == "darwin"* ]]; then
         echo -e "${YELLOW}Installation methods (macOS):${NC}"
-        echo -e "  - Homebrew (will be installed if not present)"
+        echo -e "  - Xcode Command Line Tools (for git)"
+        echo -e "  - Official .pkg installers (for .NET SDK and Node.js)"
     elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
         echo -e "${YELLOW}Installation methods (Linux):${NC}"
         echo -e "  - apt-get (if available)"
@@ -58,42 +59,6 @@ if [[ "$SKIP_CONFIRMATION" != "true" ]]; then
     echo
 fi
 
-install_homebrew_if_needed() {
-    if ! command -v brew &> /dev/null; then
-        echo -e "${YELLOW}Homebrew not found. Installing Homebrew...${NC}"
-        if /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"; then
-            echo -e "${GREEN}Homebrew installed successfully!${NC}"
-            
-            # Add Homebrew to PATH for this session
-            if [[ "$(uname -m)" == "arm64" ]]; then
-                eval "$(/opt/homebrew/bin/brew shellenv)"
-            else
-                eval "$(/usr/local/bin/brew shellenv)"
-            fi
-            
-            if ! command -v brew &> /dev/null; then
-                echo -e "${YELLOW}Please restart your terminal and run this script again.${NC}"
-                return 1
-            fi
-        else
-            echo -e "${RED}Failed to install Homebrew${NC}"
-            return 1
-        fi
-    else
-        echo -e "${GREEN}Homebrew is already installed${NC}"
-    fi
-
-    echo -e "${YELLOW}Updating Homebrew...${NC}"
-    if brew update --auto-update; then
-        echo -e "${GREEN}Homebrew updated successfully!${NC}"
-    else
-        echo -e "${RED}Homebrew update failed${NC}"
-        return 1
-    fi
-
-    return 0
-}
-
 print_dotnet_install_instructions() {
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
         if command -v apt-get &> /dev/null; then
@@ -106,8 +71,12 @@ print_dotnet_install_instructions() {
             echo "https://learn.microsoft.com/en-us/dotnet/core/install/linux?WT.mc_id=dotnet-35129-website"
         fi
     elif [[ "$OSTYPE" == "darwin"* ]]; then
-        echo "Please install .NET SDK ${DOTNET_SDK_MAJOR} with Homebrew:"
-        echo "brew install --cask dotnet-sdk"
+        echo "Please download and install .NET SDK ${DOTNET_SDK_MAJOR} from:"
+        if [[ "$(uname -m)" == "arm64" ]]; then
+            echo "https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.101/dotnet-sdk-10.0.101-osx-arm64.pkg"
+        else
+            echo "https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.101/dotnet-sdk-10.0.101-osx-x64.pkg"
+        fi
     else
         echo "Please install .NET SDK ${DOTNET_SDK_MAJOR} from: https://dotnet.microsoft.com/en-us/download/dotnet/${DOTNET_SDK_MAJOR}.0"
     fi
@@ -195,17 +164,35 @@ install_dotnet_if_needed() {
                 fi
             fi
         elif [[ "$OSTYPE" == "darwin"* ]]; then
-            echo -e "${YELLOW}Installing .NET SDK via Homebrew...${NC}"
-            
-            if brew install --cask dotnet-sdk; then
+            echo -e "${YELLOW}Installing .NET SDK ${DOTNET_SDK_MAJOR} via official installer...${NC}"
+
+            local dotnet_pkg_url
+            if [[ "$(uname -m)" == "arm64" ]]; then
+                dotnet_pkg_url="https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.101/dotnet-sdk-10.0.101-osx-arm64.pkg"
+            else
+                dotnet_pkg_url="https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.101/dotnet-sdk-10.0.101-osx-x64.pkg"
+            fi
+
+            local dotnet_pkg="/tmp/dotnet-sdk.pkg"
+            echo -e "${YELLOW}Downloading .NET SDK installer...${NC}"
+            if ! curl -fsSL -o "$dotnet_pkg" "$dotnet_pkg_url"; then
+                echo -e "${RED}Failed to download .NET SDK installer${NC}"
+                print_dotnet_install_instructions
+                return 1
+            fi
+
+            echo -e "${YELLOW}Installing .NET SDK (requires administrator privileges)...${NC}"
+            if sudo installer -pkg "$dotnet_pkg" -target /; then
                 echo -e "${GREEN}.NET SDK has been installed successfully!${NC}"
-                
+                rm -f "$dotnet_pkg"
+
                 if ! command -v dotnet &> /dev/null; then
                     echo -e "${YELLOW}Please restart your terminal and run this script again to complete the Ikon tool installation.${NC}"
                     return 1
                 fi
             else
-                echo -e "${RED}Failed to install .NET SDK via Homebrew${NC}"
+                echo -e "${RED}Failed to install .NET SDK${NC}"
+                rm -f "$dotnet_pkg"
                 print_dotnet_install_instructions
                 return 1
             fi
@@ -257,37 +244,27 @@ install_node_if_needed() {
                 return 1
             fi
         elif [[ "$OSTYPE" == "darwin"* ]]; then
-            echo -e "${YELLOW}Installing Node.js ${NODE_MAJOR} via Homebrew...${NC}"
-            # Homebrew node formula typically installs the latest stable version
-            if brew install node@${NODE_MAJOR}; then
-                echo -e "${GREEN}Node.js installed successfully!${NC}"
-            else
-                echo -e "${YELLOW}node@${NODE_MAJOR} not available, trying latest node...${NC}"
-                if brew install node; then
-                    echo -e "${GREEN}Node.js installed successfully!${NC}"
-                else
-                    echo -e "${RED}Failed to install Node.js${NC}"
-                    return 1
-                fi
+            echo -e "${YELLOW}Installing Node.js ${NODE_MAJOR} via official installer...${NC}"
+
+            local node_pkg_url="https://nodejs.org/dist/v24.12.0/node-v24.12.0.pkg"
+            local node_pkg="/tmp/node.pkg"
+
+            echo -e "${YELLOW}Downloading Node.js installer...${NC}"
+            if ! curl -fsSL -o "$node_pkg" "$node_pkg_url"; then
+                echo -e "${RED}Failed to download Node.js installer${NC}"
+                echo -e "${YELLOW}Please download and install Node.js ${NODE_MAJOR} from: https://nodejs.org/${NC}"
+                return 1
             fi
 
-            # Handle keg-only installs by adding the correct prefix to PATH
-            local node_prefix
-            node_prefix="$(brew --prefix node@${NODE_MAJOR} 2>/dev/null || brew --prefix node 2>/dev/null)"
-
-            if [[ -n "$node_prefix" ]]; then
-                export PATH="$node_prefix/bin:$PATH"
-
-                if ! grep -q "$node_prefix/bin" "$shell_rc" 2>/dev/null; then
-                    echo "Adding Node.js ($node_prefix/bin) to PATH in $shell_rc"
-                    {
-                        echo
-                        echo '# Added by Ikon installer – Node.js'
-                        echo "export PATH=\"$node_prefix/bin:\$PATH\""
-                    } >> "$shell_rc"
-                fi
+            echo -e "${YELLOW}Installing Node.js (requires administrator privileges)...${NC}"
+            if sudo installer -pkg "$node_pkg" -target /; then
+                echo -e "${GREEN}Node.js installed successfully!${NC}"
+                rm -f "$node_pkg"
             else
-                echo -e "${YELLOW}Warning: Unable to determine Homebrew Node.js prefix; PATH not updated.${NC}"
+                echo -e "${RED}Failed to install Node.js${NC}"
+                rm -f "$node_pkg"
+                echo -e "${YELLOW}Please download and install Node.js ${NODE_MAJOR} from: https://nodejs.org/${NC}"
+                return 1
             fi
         else
             echo -e "${RED}Node.js is not installed. Please install Node.js ${NODE_MAJOR} or higher for your OS.${NC}"
@@ -313,13 +290,25 @@ install_git_if_needed() {
                 return 1
             fi
         elif [[ "$OSTYPE" == "darwin"* ]]; then
-            echo -e "${YELLOW}Installing git via Homebrew...${NC}"
-            if brew install git; then
-                echo -e "${GREEN}git installed successfully!${NC}"
-            else
-                echo -e "${RED}Failed to install git${NC}"
-                return 1
-            fi
+            echo -e "${YELLOW}Installing Xcode Command Line Tools (includes git)...${NC}"
+            echo -e "${YELLOW}A dialog will appear - please click 'Install' to continue.${NC}"
+
+            xcode-select --install 2>/dev/null || true
+
+            # Wait for git to become available (polling)
+            echo -e "${YELLOW}Waiting for installation to complete...${NC}"
+            local max_wait=600  # 10 minutes max
+            local waited=0
+            while ! command -v git &> /dev/null; do
+                if [ $waited -ge $max_wait ]; then
+                    echo -e "${RED}Timed out waiting for Xcode Command Line Tools installation.${NC}"
+                    echo -e "${YELLOW}Please complete the installation manually and run this script again.${NC}"
+                    return 1
+                fi
+                sleep 5
+                waited=$((waited + 5))
+            done
+            echo -e "${GREEN}git installed successfully!${NC}"
         else
             echo -e "${RED}git is not installed. Please install git for your OS.${NC}"
             return 1
@@ -379,10 +368,6 @@ echo "Checking pre-requisites for Ikon tool installation..."
 
 SHELL_RC="$(detect_shell_rc)"
 SHELL_NAME="${SHELL##*/}"
-
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    install_homebrew_if_needed || exit 1
-fi
 
 install_dotnet_if_needed "$SHELL_RC" || exit 1
 install_node_if_needed "$SHELL_RC" || exit 1
