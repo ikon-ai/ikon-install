@@ -186,6 +186,10 @@ install_dotnet_if_needed() {
                 echo -e "${GREEN}.NET SDK has been installed successfully!${NC}"
                 rm -f "$dotnet_pkg"
 
+                # Add dotnet to PATH for current session (pkg installs to /usr/local/share/dotnet)
+                export PATH="/usr/local/share/dotnet:$PATH"
+                export DOTNET_ROOT="/usr/local/share/dotnet"
+
                 if ! command -v dotnet &> /dev/null; then
                     echo -e "${YELLOW}Please restart your terminal and run this script again to complete the Ikon tool installation.${NC}"
                     return 1
