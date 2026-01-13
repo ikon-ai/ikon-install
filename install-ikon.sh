@@ -394,12 +394,12 @@ DOTNET_TOOLS_PATH="$HOME/.dotnet/tools"
 export PATH="$PATH:$DOTNET_TOOLS_PATH"
 
 # Silently uninstall other ikon tool packages if they exist
-dotnet tool uninstall IkonTool -g >/dev/null 2>&1 || true
-dotnet tool uninstall ikon-internal -g >/dev/null 2>&1 || true
+dotnet tool uninstall IkonTool --global >/dev/null 2>&1 || true
+dotnet tool uninstall ikon-internal --global >/dev/null 2>&1 || true
 
 # Install Ikon tool globally
 echo "Installing Ikon tool..."
-if ! dotnet tool install ikon -g; then
+if ! dotnet tool install ikon --global --no-http-cache; then
     echo -e "${RED}Error: Failed to install Ikon tool${NC}"
     exit 1
 fi
