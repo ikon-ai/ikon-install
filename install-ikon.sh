@@ -410,6 +410,9 @@ if ! grep -q '\$HOME/.dotnet/tools' "$SHELL_RC" 2>/dev/null; then
     echo 'export PATH="$PATH:$HOME/.dotnet/tools"' >> "$SHELL_RC"
 fi
 
+echo "Resetting Ikon tool data..."
+IKON_RESET_CONFIRM=true ikon --reset
+
 echo "Testing Ikon tool installation..."
 if ! ikon version; then
     echo -e "${RED}Error: Ikon tool has not been installed correctly${NC}"

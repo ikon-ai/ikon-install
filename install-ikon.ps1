@@ -220,6 +220,10 @@ try {
     return 1
 }
 
+Write-Host "Resetting Ikon tool data..."
+$env:IKON_RESET_CONFIRM = "true"
+ikon --reset
+
 Write-Host "Testing Ikon tool installation..."
 
 try {
