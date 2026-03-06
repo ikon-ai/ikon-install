@@ -232,12 +232,35 @@ install_node_if_needed() {
     fi
     
     if [[ "$needs_install" == "true" ]]; then
+        # Warn if a version manager is detected
+        local version_manager=""
+        if [ -n "$NVM_DIR" ]; then
+            version_manager="nvm"
+        elif command -v fnm &> /dev/null; then
+            version_manager="fnm"
+        elif command -v volta &> /dev/null; then
+            version_manager="volta"
+        fi
+
+        if [ -n "$version_manager" ]; then
+            echo -e "${YELLOW}Warning: Node.js appears to be managed by ${version_manager}.${NC}"
+            echo -e "${YELLOW}Installing Node ${NODE_MAJOR} via system package may not override it.${NC}"
+            if [ "$version_manager" = "nvm" ]; then
+                echo -e "${YELLOW}Consider running: nvm install ${NODE_MAJOR} && nvm alias default ${NODE_MAJOR}${NC}"
+            elif [ "$version_manager" = "fnm" ]; then
+                echo -e "${YELLOW}Consider running: fnm install ${NODE_MAJOR} && fnm default ${NODE_MAJOR}${NC}"
+            elif [ "$version_manager" = "volta" ]; then
+                echo -e "${YELLOW}Consider running: volta install node@${NODE_MAJOR}${NC}"
+            fi
+        fi
+
         if [[ "$OSTYPE" == "linux-gnu"* ]]; then
             if command -v apt-get &> /dev/null; then
                 echo -e "${YELLOW}Installing Node.js ${NODE_MAJOR}...${NC}"
                 # Install specific major version from NodeSource repository
                 if curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | sudo -E bash - && \
                    sudo apt-get install -y nodejs; then
+                    hash -r
                     echo -e "${GREEN}Node.js installed successfully!${NC}"
                 else
                     echo -e "${RED}Failed to install Node.js${NC}"
@@ -262,8 +285,14 @@ install_node_if_needed() {
 
             echo -e "${YELLOW}Installing Node.js (requires administrator privileges)...${NC}"
             if sudo installer -pkg "$node_pkg" -target /; then
+                hash -r
                 echo -e "${GREEN}Node.js installed successfully!${NC}"
                 rm -f "$node_pkg"
+
+                # Ensure the new binary is in PATH for the current session
+                if [ -d "/usr/local/bin" ] && [[ ":$PATH:" != *":/usr/local/bin:"* ]]; then
+                    export PATH="/usr/local/bin:$PATH"
+                fi
             else
                 echo -e "${RED}Failed to install Node.js${NC}"
                 rm -f "$node_pkg"
@@ -272,6 +301,20 @@ install_node_if_needed() {
             fi
         else
             echo -e "${RED}Node.js is not installed. Please install Node.js ${NODE_MAJOR} or higher for your OS.${NC}"
+            return 1
+        fi
+
+        # Verify the installed version is sufficient
+        local post_install_version
+        post_install_version="$(node --version 2>/dev/null || echo "v0.0.0")"
+        local post_install_major
+        post_install_major="$(echo "$post_install_version" | sed 's/^v//' | cut -d'.' -f1)"
+        if [ "$post_install_major" -lt "$NODE_MAJOR" ]; then
+            echo -e "${RED}Error: Node.js ${NODE_MAJOR} was installed but $post_install_version is still the active version${NC}"
+            if [ -n "$version_manager" ]; then
+                echo -e "${YELLOW}Your version manager ($version_manager) is likely overriding the system install.${NC}"
+            fi
+            echo -e "${YELLOW}Please ensure Node.js ${NODE_MAJOR} or higher is first in your PATH and run this script again.${NC}"
             return 1
         fi
     fi
@@ -385,6 +428,23 @@ if [ "$MAJOR_VERSION" -lt "$DOTNET_SDK_MAJOR" ]; then
     echo -e "${RED}Error: .NET SDK version ${DOTNET_SDK_MAJOR} or higher is required${NC}"
     echo "Current version: $DOTNET_VERSION"
     print_dotnet_install_instructions
+    exit 1
+fi
+
+# Check node version (final verification after installation)
+NODE_VERSION="$(node --version 2>/dev/null || echo "v0.0.0")"
+NODE_INSTALLED_MAJOR="$(echo "$NODE_VERSION" | sed 's/^v//' | cut -d'.' -f1)"
+if [ "$NODE_INSTALLED_MAJOR" -lt "$NODE_MAJOR" ]; then
+    echo -e "${RED}Error: Node.js ${NODE_MAJOR} or higher is required but $NODE_VERSION is active${NC}"
+    if [ -n "$NVM_DIR" ]; then
+        echo "You appear to be using nvm. Run: nvm install ${NODE_MAJOR} && nvm alias default ${NODE_MAJOR}"
+    elif command -v fnm &> /dev/null; then
+        echo "You appear to be using fnm. Run: fnm install ${NODE_MAJOR} && fnm default ${NODE_MAJOR}"
+    elif command -v volta &> /dev/null; then
+        echo "You appear to be using volta. Run: volta install node@${NODE_MAJOR}"
+    else
+        echo "Please install Node.js ${NODE_MAJOR} and ensure it is first in your PATH."
+    fi
     exit 1
 fi
 

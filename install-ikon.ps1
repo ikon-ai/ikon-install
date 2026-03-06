@@ -153,12 +153,35 @@ if ($needsNodeInstall) {
         if (-not $nodeVersion) {
             throw "node command still not available"
         }
+        $installedMajor = [int]($nodeVersion.TrimStart('v').Split('.')[0])
+        if ($installedMajor -lt $NODE_MAJOR) {
+            Write-Host "Error: Node.js $NODE_MAJOR or higher is required but $nodeVersion is active" -ForegroundColor Red
+            Write-Host "Please ensure Node.js $NODE_MAJOR or higher is first in your PATH and run this script again." -ForegroundColor Yellow
+            return 1
+        }
         Write-Host "Node.js $nodeVersion found" -ForegroundColor DarkGreen
     } catch {
         Write-Host "Please restart your terminal and run this script again to complete the installation." -ForegroundColor Yellow
         Read-Host "Press Enter to exit"
         return 0
     }
+}
+
+# Final Node.js version verification
+try {
+    $nodeVersion = node --version 2>$null
+    if (-not $nodeVersion) {
+        throw "node command not found"
+    }
+    $nodeMajor = [int]($nodeVersion.TrimStart('v').Split('.')[0])
+    if ($nodeMajor -lt $NODE_MAJOR) {
+        Write-Host "Error: Node.js $NODE_MAJOR or higher is required but $nodeVersion is active" -ForegroundColor Red
+        Write-Host "Please install Node.js $NODE_MAJOR and ensure it is first in your PATH." -ForegroundColor Yellow
+        return 1
+    }
+} catch {
+    Write-Host "Error: Node.js is not available. Please install Node.js $NODE_MAJOR or higher." -ForegroundColor Red
+    return 1
 }
 
 # Check if git is installed
