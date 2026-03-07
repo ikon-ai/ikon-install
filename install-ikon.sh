@@ -305,17 +305,42 @@ install_node_if_needed() {
         fi
 
         # Verify the installed version is sufficient
+        # Check known system binary paths first, since version managers may shadow `node`
+        local system_node=""
+        if [[ "$OSTYPE" == "linux-gnu"* ]] && [ -x "/usr/bin/node" ]; then
+            system_node="/usr/bin/node"
+        elif [[ "$OSTYPE" == "darwin"* ]] && [ -x "/usr/local/bin/node" ]; then
+            system_node="/usr/local/bin/node"
+        fi
+
         local post_install_version
-        post_install_version="$(node --version 2>/dev/null || echo "v0.0.0")"
         local post_install_major
+        if [ -n "$system_node" ]; then
+            post_install_version="$("$system_node" --version 2>/dev/null || echo "v0.0.0")"
+        else
+            post_install_version="$(node --version 2>/dev/null || echo "v0.0.0")"
+        fi
         post_install_major="$(echo "$post_install_version" | sed 's/^v//' | cut -d'.' -f1)"
+
         if [ "$post_install_major" -lt "$NODE_MAJOR" ]; then
-            echo -e "${RED}Error: Node.js ${NODE_MAJOR} was installed but $post_install_version is still the active version${NC}"
-            if [ -n "$version_manager" ]; then
-                echo -e "${YELLOW}Your version manager ($version_manager) is likely overriding the system install.${NC}"
-            fi
-            echo -e "${YELLOW}Please ensure Node.js ${NODE_MAJOR} or higher is first in your PATH and run this script again.${NC}"
+            echo -e "${RED}Error: Node.js ${NODE_MAJOR} installation failed — $post_install_version found at ${system_node:-node}${NC}"
             return 1
+        fi
+
+        # Check if `node` still resolves to an older version (version manager override)
+        local active_version
+        active_version="$(node --version 2>/dev/null || echo "v0.0.0")"
+        local active_major
+        active_major="$(echo "$active_version" | sed 's/^v//' | cut -d'.' -f1)"
+        if [ "$active_major" -lt "$NODE_MAJOR" ] && [ -n "$version_manager" ]; then
+            echo -e "${YELLOW}Warning: Node.js ${NODE_MAJOR} was installed to ${system_node}, but ${version_manager} is providing $active_version as the active version.${NC}"
+            if [ "$version_manager" = "nvm" ]; then
+                echo -e "${YELLOW}Consider running: nvm install ${NODE_MAJOR} && nvm alias default ${NODE_MAJOR}${NC}"
+            elif [ "$version_manager" = "fnm" ]; then
+                echo -e "${YELLOW}Consider running: fnm install ${NODE_MAJOR} && fnm default ${NODE_MAJOR}${NC}"
+            elif [ "$version_manager" = "volta" ]; then
+                echo -e "${YELLOW}Consider running: volta install node@${NODE_MAJOR}${NC}"
+            fi
         fi
     fi
     return 0
@@ -432,20 +457,49 @@ if [ "$MAJOR_VERSION" -lt "$DOTNET_SDK_MAJOR" ]; then
 fi
 
 # Check node version (final verification after installation)
+# Check known system paths first, then fall back to `node` in PATH
+SYSTEM_NODE=""
+if [[ "$OSTYPE" == "linux-gnu"* ]] && [ -x "/usr/bin/node" ]; then
+    SYSTEM_NODE="/usr/bin/node"
+elif [[ "$OSTYPE" == "darwin"* ]] && [ -x "/usr/local/bin/node" ]; then
+    SYSTEM_NODE="/usr/local/bin/node"
+fi
+
 NODE_VERSION="$(node --version 2>/dev/null || echo "v0.0.0")"
 NODE_INSTALLED_MAJOR="$(echo "$NODE_VERSION" | sed 's/^v//' | cut -d'.' -f1)"
+
 if [ "$NODE_INSTALLED_MAJOR" -lt "$NODE_MAJOR" ]; then
-    echo -e "${RED}Error: Node.js ${NODE_MAJOR} or higher is required but $NODE_VERSION is active${NC}"
-    if [ -n "$NVM_DIR" ]; then
-        echo "You appear to be using nvm. Run: nvm install ${NODE_MAJOR} && nvm alias default ${NODE_MAJOR}"
-    elif command -v fnm &> /dev/null; then
-        echo "You appear to be using fnm. Run: fnm install ${NODE_MAJOR} && fnm default ${NODE_MAJOR}"
-    elif command -v volta &> /dev/null; then
-        echo "You appear to be using volta. Run: volta install node@${NODE_MAJOR}"
+    # Active `node` is too old — check if the system-installed binary has the right version
+    if [ -n "$SYSTEM_NODE" ]; then
+        SYSTEM_NODE_VERSION="$("$SYSTEM_NODE" --version 2>/dev/null || echo "v0.0.0")"
+        SYSTEM_NODE_MAJOR="$(echo "$SYSTEM_NODE_VERSION" | sed 's/^v//' | cut -d'.' -f1)"
+        if [ "$SYSTEM_NODE_MAJOR" -ge "$NODE_MAJOR" ]; then
+            echo -e "${YELLOW}Warning: Node.js ${NODE_MAJOR} is installed at ${SYSTEM_NODE} ($SYSTEM_NODE_VERSION), but $NODE_VERSION is the active version in PATH.${NC}"
+            if [ -n "$NVM_DIR" ]; then
+                echo "You appear to be using nvm. Run: nvm install ${NODE_MAJOR} && nvm alias default ${NODE_MAJOR}"
+            elif command -v fnm &> /dev/null; then
+                echo "You appear to be using fnm. Run: fnm install ${NODE_MAJOR} && fnm default ${NODE_MAJOR}"
+            elif command -v volta &> /dev/null; then
+                echo "You appear to be using volta. Run: volta install node@${NODE_MAJOR}"
+            fi
+        else
+            echo -e "${RED}Error: Node.js ${NODE_MAJOR} or higher is required but $NODE_VERSION is active${NC}"
+            echo "Please install Node.js ${NODE_MAJOR} and ensure it is first in your PATH."
+            exit 1
+        fi
     else
-        echo "Please install Node.js ${NODE_MAJOR} and ensure it is first in your PATH."
+        echo -e "${RED}Error: Node.js ${NODE_MAJOR} or higher is required but $NODE_VERSION is active${NC}"
+        if [ -n "$NVM_DIR" ]; then
+            echo "You appear to be using nvm. Run: nvm install ${NODE_MAJOR} && nvm alias default ${NODE_MAJOR}"
+        elif command -v fnm &> /dev/null; then
+            echo "You appear to be using fnm. Run: fnm install ${NODE_MAJOR} && fnm default ${NODE_MAJOR}"
+        elif command -v volta &> /dev/null; then
+            echo "You appear to be using volta. Run: volta install node@${NODE_MAJOR}"
+        else
+            echo "Please install Node.js ${NODE_MAJOR} and ensure it is first in your PATH."
+        fi
+        exit 1
     fi
-    exit 1
 fi
 
 DOTNET_TOOLS_PATH="$HOME/.dotnet/tools"
