@@ -34,8 +34,6 @@ Authenticate to the Ikon platform:
 ikon login
 ```
 
-> Note: This will open a browser window to https://ikonai.com where you can complete the authentication process.
-
 ## Create a new Ikon AI App
 
 Scaffold a new app project in your current directory:
