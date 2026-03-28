@@ -242,7 +242,8 @@ try {
     $ikonPath = Get-Command ikon -ErrorAction Stop
 } catch {
     Write-Host "Error: ikon command not found in PATH" -ForegroundColor Red
-    Write-Host "Please restart your terminal and try again"
+    Write-Host "Please restart your terminal and try again." -ForegroundColor Yellow
+    Write-Host "If that doesn't help, try restarting your machine before running the script again." -ForegroundColor Yellow
     return 1
 }
 
