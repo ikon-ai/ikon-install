@@ -110,6 +110,7 @@ if ($needsDotnetInstall) {
         Write-Host ".NET SDK $dotnetVersion found" -ForegroundColor DarkGreen
     } catch {
         Write-Host "Please restart your terminal and run this script again to complete the Ikon tool installation." -ForegroundColor Yellow
+        Write-Host "If that doesn't help, try restarting your machine before running the script again." -ForegroundColor Yellow
         Read-Host "Press Enter to exit"
         return 0
     }
@@ -162,6 +163,7 @@ if ($needsNodeInstall) {
         Write-Host "Node.js $nodeVersion found" -ForegroundColor DarkGreen
     } catch {
         Write-Host "Please restart your terminal and run this script again to complete the installation." -ForegroundColor Yellow
+        Write-Host "If that doesn't help, try restarting your machine before running the script again." -ForegroundColor Yellow
         Read-Host "Press Enter to exit"
         return 0
     }
@@ -209,6 +211,7 @@ try {
         }
     } catch {
         Write-Host "Please restart your terminal and run this script again to complete the installation." -ForegroundColor Yellow
+        Write-Host "If that doesn't help, try restarting your machine before running the script again." -ForegroundColor Yellow
         Read-Host "Press Enter to exit"
         return 0
     }
