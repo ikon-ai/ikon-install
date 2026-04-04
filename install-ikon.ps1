@@ -4,6 +4,7 @@ $ErrorActionPreference = "Stop"
 
 $DOTNET_SDK_MAJOR = 10
 $NODE_MAJOR = 24
+$NODE_VERSION = "24.14.0"
 
 $skipConfirmation = $false
 if ($env:CI -eq "true") {
@@ -141,7 +142,7 @@ try {
 
 if ($needsNodeInstall) {
     Write-Host "Installing Node.js $NODE_MAJOR using winget..." -ForegroundColor Yellow
-    winget install OpenJS.NodeJS.LTS --silent --accept-source-agreements --accept-package-agreements --disable-interactivity
+    winget install OpenJS.NodeJS.LTS --version $NODE_VERSION --silent --accept-source-agreements --accept-package-agreements --disable-interactivity
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Error: Failed to install Node.js using winget" -ForegroundColor Red
         return 1

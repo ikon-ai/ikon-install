@@ -4,6 +4,7 @@
 
 DOTNET_SDK_MAJOR="10"
 NODE_MAJOR="24"
+NODE_VERSION="24.14.0"
 
 set -e
 
@@ -273,7 +274,7 @@ install_node_if_needed() {
         elif [[ "$OSTYPE" == "darwin"* ]]; then
             echo -e "${YELLOW}Installing Node.js ${NODE_MAJOR} via official installer...${NC}"
 
-            local node_pkg_url="https://nodejs.org/dist/v24.12.0/node-v24.12.0.pkg"
+            local node_pkg_url="https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}.pkg"
             local node_pkg="/tmp/node.pkg"
 
             echo -e "${YELLOW}Downloading Node.js installer...${NC}"
