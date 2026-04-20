@@ -273,6 +273,9 @@ install_node_via_nvm() {
     nvm install "${NODE_MAJOR}" && nvm alias default "${NODE_MAJOR}" && nvm use default
     local rc=$?
     set -e
+    if [ $rc -eq 0 ]; then
+        _INSTALLED_NODE_BIN_DIR="$(dirname "$(command -v node 2>/dev/null)")"
+    fi
     return $rc
 }
 
@@ -287,6 +290,19 @@ install_node_via_fnm() {
     fnm install "${NODE_MAJOR}" && fnm default "${NODE_MAJOR}" && fnm use "${NODE_MAJOR}"
     local rc=$?
     set -e
+    if [ $rc -eq 0 ]; then
+        # fnm's active node lives in a per-shell multishell dir that disappears
+        # when the shell exits. Resolve the stable installation path instead so
+        # it can be written to $GITHUB_PATH and survive into the next step.
+        local version
+        version="$(fnm current 2>/dev/null || echo "")"
+        local fnm_root="${FNM_DIR:-$HOME/.local/share/fnm}"
+        if [ -n "$version" ] && [ -d "$fnm_root/node-versions/$version/installation/bin" ]; then
+            _INSTALLED_NODE_BIN_DIR="$fnm_root/node-versions/$version/installation/bin"
+        else
+            _INSTALLED_NODE_BIN_DIR="$(dirname "$(command -v node 2>/dev/null)")"
+        fi
+    fi
     return $rc
 }
 
@@ -296,7 +312,11 @@ install_node_via_volta() {
         echo -e "${RED}volta not found in PATH${NC}"
         return 1
     fi
-    volta install "node@${NODE_MAJOR}"
+    if volta install "node@${NODE_MAJOR}"; then
+        _INSTALLED_NODE_BIN_DIR="${VOLTA_HOME:-$HOME/.volta}/bin"
+        return 0
+    fi
+    return 1
 }
 
 install_node_via_system() {
@@ -307,6 +327,7 @@ install_node_via_system() {
                sudo apt-get install -y nodejs; then
                 hash -r
                 echo -e "${GREEN}Node.js installed successfully!${NC}"
+                _INSTALLED_NODE_BIN_DIR="/usr/bin"
                 return 0
             else
                 echo -e "${RED}Failed to install Node.js${NC}"
@@ -334,10 +355,7 @@ install_node_via_system() {
             hash -r
             echo -e "${GREEN}Node.js installed successfully!${NC}"
             rm -f "$node_pkg"
-
-            if [ -d "/usr/local/bin" ] && [[ ":$PATH:" != *":/usr/local/bin:"* ]]; then
-                export PATH="/usr/local/bin:$PATH"
-            fi
+            _INSTALLED_NODE_BIN_DIR="/usr/local/bin"
             return 0
         else
             echo -e "${RED}Failed to install Node.js${NC}"
@@ -381,6 +399,7 @@ install_node_if_needed() {
         vm="$(detect_available_vm)"
     fi
 
+    _INSTALLED_NODE_BIN_DIR=""
     if [ -n "$vm" ]; then
         case "$vm" in
             nvm)   install_node_via_nvm ;;
@@ -395,10 +414,18 @@ install_node_if_needed() {
             return 1
         fi
         echo -e "${GREEN}Node.js installed successfully via ${vm}!${NC}"
-        return 0
+    else
+        install_node_via_system || return 1
     fi
 
-    install_node_via_system || return 1
+    # Ensure the newly installed node takes precedence for the rest of this
+    # script. Without this, a pre-existing node (from homebrew, the hosted
+    # toolcache on CI, /usr/local/bin shadowed by /opt/homebrew/bin, etc.)
+    # can still win and make the verification below fail.
+    if [ -n "$_INSTALLED_NODE_BIN_DIR" ] && [ -d "$_INSTALLED_NODE_BIN_DIR" ]; then
+        export PATH="$_INSTALLED_NODE_BIN_DIR:$PATH"
+        hash -r
+    fi
 
     local post_install_version
     post_install_version="$(node --version 2>/dev/null || echo "v0.0.0")"
@@ -408,6 +435,14 @@ install_node_if_needed() {
         echo -e "${RED}Error: Node.js ${NODE_MAJOR} installation completed but $post_install_version is active${NC}"
         return 1
     fi
+
+    # Opt-in machine-readable report for callers that need to know where node
+    # was installed (e.g. CI workflows that want to prepend this to PATH for
+    # subsequent steps). Set IKON_INSTALL_REPORT to a file path to enable.
+    if [ -n "${IKON_INSTALL_REPORT:-}" ] && [ -n "$_INSTALLED_NODE_BIN_DIR" ]; then
+        echo "NODE_BIN_DIR=$_INSTALLED_NODE_BIN_DIR" >> "$IKON_INSTALL_REPORT"
+    fi
+
     return 0
 }
 
