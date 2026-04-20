@@ -211,139 +211,202 @@ install_dotnet_if_needed() {
     return 0
 }
 
+_resolve_path() {
+    local p="$1"
+    if [ -z "$p" ]; then
+        return 0
+    fi
+    if readlink -f "$p" >/dev/null 2>&1; then
+        readlink -f "$p"
+    elif command -v perl >/dev/null 2>&1; then
+        perl -MCwd=abs_path -le 'print abs_path(shift)' "$p"
+    else
+        (cd "$(dirname "$p")" 2>/dev/null && printf '%s/%s\n' "$(pwd -P)" "$(basename "$p")")
+    fi
+}
+
+# Prints nvm|fnm|volta|"" based on the realpath of the active `node` binary
+detect_active_node_vm() {
+    if ! command -v node >/dev/null 2>&1; then
+        return 0
+    fi
+    local node_path
+    node_path="$(command -v node)"
+    local real_path
+    real_path="$(_resolve_path "$node_path")"
+    case "$real_path" in
+        */.nvm/versions/node/*) echo "nvm" ;;
+        */.fnm/node-versions/*|*/.local/share/fnm/node-versions/*|*/.local/state/fnm_multishells/*) echo "fnm" ;;
+        */.volta/tools/image/node/*|*/.volta/bin/*) echo "volta" ;;
+        *) echo "" ;;
+    esac
+}
+
+# Prints nvm|fnm|volta|"" for when no node is installed yet but a VM is available
+detect_available_vm() {
+    if [ -n "$NVM_DIR" ] && [ -s "$NVM_DIR/nvm.sh" ]; then
+        echo "nvm"
+    elif [ -s "$HOME/.nvm/nvm.sh" ]; then
+        echo "nvm"
+    elif command -v fnm >/dev/null 2>&1; then
+        echo "fnm"
+    elif command -v volta >/dev/null 2>&1; then
+        echo "volta"
+    else
+        echo ""
+    fi
+}
+
+install_node_via_nvm() {
+    echo -e "${YELLOW}Installing Node.js ${NODE_MAJOR} via nvm...${NC}"
+    export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+    if [ ! -s "$NVM_DIR/nvm.sh" ]; then
+        echo "nvm init script not found at $NVM_DIR/nvm.sh" >&2
+        return 1
+    fi
+    # Source in the current shell so the new node is active for later steps.
+    # Disable `set -e` around sourcing: nvm.sh has many internal conditionals
+    # that can exit-on-error under a strict shell.
+    set +e
+    # shellcheck disable=SC1091
+    \. "$NVM_DIR/nvm.sh"
+    nvm install "${NODE_MAJOR}" && nvm alias default "${NODE_MAJOR}" && nvm use default
+    local rc=$?
+    set -e
+    return $rc
+}
+
+install_node_via_fnm() {
+    echo -e "${YELLOW}Installing Node.js ${NODE_MAJOR} via fnm...${NC}"
+    if ! command -v fnm >/dev/null 2>&1; then
+        echo "fnm not found in PATH" >&2
+        return 1
+    fi
+    set +e
+    eval "$(fnm env --shell bash)"
+    fnm install "${NODE_MAJOR}" && fnm default "${NODE_MAJOR}" && fnm use "${NODE_MAJOR}"
+    local rc=$?
+    set -e
+    return $rc
+}
+
+install_node_via_volta() {
+    echo -e "${YELLOW}Installing Node.js ${NODE_MAJOR} via volta...${NC}"
+    if ! command -v volta >/dev/null 2>&1; then
+        echo -e "${RED}volta not found in PATH${NC}"
+        return 1
+    fi
+    volta install "node@${NODE_MAJOR}"
+}
+
+install_node_via_system() {
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        if command -v apt-get &> /dev/null; then
+            echo -e "${YELLOW}Installing Node.js ${NODE_MAJOR}...${NC}"
+            if curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | sudo -E bash - && \
+               sudo apt-get install -y nodejs; then
+                hash -r
+                echo -e "${GREEN}Node.js installed successfully!${NC}"
+                return 0
+            else
+                echo -e "${RED}Failed to install Node.js${NC}"
+                return 1
+            fi
+        else
+            echo -e "${RED}Node.js is not installed. Please install Node.js ${NODE_MAJOR} or higher for your distribution.${NC}"
+            return 1
+        fi
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        echo -e "${YELLOW}Installing Node.js ${NODE_MAJOR} via official installer...${NC}"
+
+        local node_pkg_url="https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}.pkg"
+        local node_pkg="/tmp/node.pkg"
+
+        echo -e "${YELLOW}Downloading Node.js installer...${NC}"
+        if ! curl -fsSL -o "$node_pkg" "$node_pkg_url"; then
+            echo -e "${RED}Failed to download Node.js installer${NC}"
+            echo -e "${YELLOW}Please download and install Node.js ${NODE_MAJOR} from: https://nodejs.org/${NC}"
+            return 1
+        fi
+
+        echo -e "${YELLOW}Installing Node.js (requires administrator privileges)...${NC}"
+        if sudo installer -pkg "$node_pkg" -target /; then
+            hash -r
+            echo -e "${GREEN}Node.js installed successfully!${NC}"
+            rm -f "$node_pkg"
+
+            if [ -d "/usr/local/bin" ] && [[ ":$PATH:" != *":/usr/local/bin:"* ]]; then
+                export PATH="/usr/local/bin:$PATH"
+            fi
+            return 0
+        else
+            echo -e "${RED}Failed to install Node.js${NC}"
+            rm -f "$node_pkg"
+            echo -e "${YELLOW}Please download and install Node.js ${NODE_MAJOR} from: https://nodejs.org/${NC}"
+            return 1
+        fi
+    else
+        echo -e "${RED}Node.js is not installed. Please install Node.js ${NODE_MAJOR} or higher for your OS.${NC}"
+        return 1
+    fi
+}
+
+print_vm_manual_command() {
+    local vm="$1"
+    case "$vm" in
+        nvm)   echo -e "${YELLOW}Run manually: nvm install ${NODE_MAJOR} && nvm alias default ${NODE_MAJOR}${NC}" ;;
+        fnm)   echo -e "${YELLOW}Run manually: fnm install ${NODE_MAJOR} && fnm default ${NODE_MAJOR}${NC}" ;;
+        volta) echo -e "${YELLOW}Run manually: volta install node@${NODE_MAJOR}${NC}" ;;
+    esac
+}
+
 install_node_if_needed() {
     local shell_rc="$1"
-    local needs_install=false
-    
-    # Check if node exists and get version
+
     if command -v node &> /dev/null; then
         local node_current
         node_current="$(node --version 2>/dev/null || echo "v0.0.0")"
-        # Remove 'v' prefix and get major version
         MAJOR_VERSION="$(echo "$node_current" | sed 's/^v//' | cut -d'.' -f1)"
 
-        if [ "$MAJOR_VERSION" -lt "$NODE_MAJOR" ]; then
-            echo -e "${YELLOW}Node.js version $node_current found, but version ${NODE_MAJOR} or higher is required${NC}"
-            needs_install=true
-        else
+        if [ "$MAJOR_VERSION" -ge "$NODE_MAJOR" ]; then
             echo -e "${GREEN}Node.js $node_current is already installed${NC}"
             return 0
         fi
-    else
-        needs_install=true
+        echo -e "${YELLOW}Node.js version $node_current found, but version ${NODE_MAJOR} or higher is required${NC}"
     fi
-    
-    if [[ "$needs_install" == "true" ]]; then
-        # Warn if a version manager is detected
-        local version_manager=""
-        if [ -n "$NVM_DIR" ]; then
-            version_manager="nvm"
-        elif command -v fnm &> /dev/null; then
-            version_manager="fnm"
-        elif command -v volta &> /dev/null; then
-            version_manager="volta"
-        fi
 
-        if [ -n "$version_manager" ]; then
-            echo -e "${YELLOW}Warning: Node.js appears to be managed by ${version_manager}.${NC}"
-            echo -e "${YELLOW}Installing Node ${NODE_MAJOR} via system package may not override it.${NC}"
-            if [ "$version_manager" = "nvm" ]; then
-                echo -e "${YELLOW}Consider running: nvm install ${NODE_MAJOR} && nvm alias default ${NODE_MAJOR}${NC}"
-            elif [ "$version_manager" = "fnm" ]; then
-                echo -e "${YELLOW}Consider running: fnm install ${NODE_MAJOR} && fnm default ${NODE_MAJOR}${NC}"
-            elif [ "$version_manager" = "volta" ]; then
-                echo -e "${YELLOW}Consider running: volta install node@${NODE_MAJOR}${NC}"
-            fi
-        fi
+    local vm
+    vm="$(detect_active_node_vm)"
+    if [ -z "$vm" ]; then
+        vm="$(detect_available_vm)"
+    fi
 
-        if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-            if command -v apt-get &> /dev/null; then
-                echo -e "${YELLOW}Installing Node.js ${NODE_MAJOR}...${NC}"
-                # Install specific major version from NodeSource repository
-                if curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | sudo -E bash - && \
-                   sudo apt-get install -y nodejs; then
-                    hash -r
-                    echo -e "${GREEN}Node.js installed successfully!${NC}"
-                else
-                    echo -e "${RED}Failed to install Node.js${NC}"
-                    return 1
-                fi
-            else
-                echo -e "${RED}Node.js is not installed. Please install Node.js ${NODE_MAJOR} or higher for your distribution.${NC}"
-                return 1
-            fi
-        elif [[ "$OSTYPE" == "darwin"* ]]; then
-            echo -e "${YELLOW}Installing Node.js ${NODE_MAJOR} via official installer...${NC}"
-
-            local node_pkg_url="https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}.pkg"
-            local node_pkg="/tmp/node.pkg"
-
-            echo -e "${YELLOW}Downloading Node.js installer...${NC}"
-            if ! curl -fsSL -o "$node_pkg" "$node_pkg_url"; then
-                echo -e "${RED}Failed to download Node.js installer${NC}"
-                echo -e "${YELLOW}Please download and install Node.js ${NODE_MAJOR} from: https://nodejs.org/${NC}"
-                return 1
-            fi
-
-            echo -e "${YELLOW}Installing Node.js (requires administrator privileges)...${NC}"
-            if sudo installer -pkg "$node_pkg" -target /; then
-                hash -r
-                echo -e "${GREEN}Node.js installed successfully!${NC}"
-                rm -f "$node_pkg"
-
-                # Ensure the new binary is in PATH for the current session
-                if [ -d "/usr/local/bin" ] && [[ ":$PATH:" != *":/usr/local/bin:"* ]]; then
-                    export PATH="/usr/local/bin:$PATH"
-                fi
-            else
-                echo -e "${RED}Failed to install Node.js${NC}"
-                rm -f "$node_pkg"
-                echo -e "${YELLOW}Please download and install Node.js ${NODE_MAJOR} from: https://nodejs.org/${NC}"
-                return 1
-            fi
-        else
-            echo -e "${RED}Node.js is not installed. Please install Node.js ${NODE_MAJOR} or higher for your OS.${NC}"
+    if [ -n "$vm" ]; then
+        case "$vm" in
+            nvm)   install_node_via_nvm ;;
+            fnm)   install_node_via_fnm ;;
+            volta) install_node_via_volta ;;
+        esac
+        local vm_status=$?
+        hash -r
+        if [ $vm_status -ne 0 ]; then
+            echo -e "${RED}Failed to install Node.js via ${vm}${NC}"
+            print_vm_manual_command "$vm"
             return 1
         fi
+        echo -e "${GREEN}Node.js installed successfully via ${vm}!${NC}"
+        return 0
+    fi
 
-        # Verify the installed version is sufficient
-        # Check known system binary paths first, since version managers may shadow `node`
-        local system_node=""
-        if [[ "$OSTYPE" == "linux-gnu"* ]] && [ -x "/usr/bin/node" ]; then
-            system_node="/usr/bin/node"
-        elif [[ "$OSTYPE" == "darwin"* ]] && [ -x "/usr/local/bin/node" ]; then
-            system_node="/usr/local/bin/node"
-        fi
+    install_node_via_system || return 1
 
-        local post_install_version
-        local post_install_major
-        if [ -n "$system_node" ]; then
-            post_install_version="$("$system_node" --version 2>/dev/null || echo "v0.0.0")"
-        else
-            post_install_version="$(node --version 2>/dev/null || echo "v0.0.0")"
-        fi
-        post_install_major="$(echo "$post_install_version" | sed 's/^v//' | cut -d'.' -f1)"
-
-        if [ "$post_install_major" -lt "$NODE_MAJOR" ]; then
-            echo -e "${RED}Error: Node.js ${NODE_MAJOR} installation failed — $post_install_version found at ${system_node:-node}${NC}"
-            return 1
-        fi
-
-        # Check if `node` still resolves to an older version (version manager override)
-        local active_version
-        active_version="$(node --version 2>/dev/null || echo "v0.0.0")"
-        local active_major
-        active_major="$(echo "$active_version" | sed 's/^v//' | cut -d'.' -f1)"
-        if [ "$active_major" -lt "$NODE_MAJOR" ] && [ -n "$version_manager" ]; then
-            echo -e "${YELLOW}Warning: Node.js ${NODE_MAJOR} was installed to ${system_node}, but ${version_manager} is providing $active_version as the active version.${NC}"
-            if [ "$version_manager" = "nvm" ]; then
-                echo -e "${YELLOW}Consider running: nvm install ${NODE_MAJOR} && nvm alias default ${NODE_MAJOR}${NC}"
-            elif [ "$version_manager" = "fnm" ]; then
-                echo -e "${YELLOW}Consider running: fnm install ${NODE_MAJOR} && fnm default ${NODE_MAJOR}${NC}"
-            elif [ "$version_manager" = "volta" ]; then
-                echo -e "${YELLOW}Consider running: volta install node@${NODE_MAJOR}${NC}"
-            fi
-        fi
+    local post_install_version
+    post_install_version="$(node --version 2>/dev/null || echo "v0.0.0")"
+    local post_install_major
+    post_install_major="$(echo "$post_install_version" | sed 's/^v//' | cut -d'.' -f1)"
+    if [ "$post_install_major" -lt "$NODE_MAJOR" ]; then
+        echo -e "${RED}Error: Node.js ${NODE_MAJOR} installation completed but $post_install_version is active${NC}"
+        return 1
     fi
     return 0
 }
@@ -459,49 +522,13 @@ if [ "$MAJOR_VERSION" -lt "$DOTNET_SDK_MAJOR" ]; then
 fi
 
 # Check node version (final verification after installation)
-# Check known system paths first, then fall back to `node` in PATH
-SYSTEM_NODE=""
-if [[ "$OSTYPE" == "linux-gnu"* ]] && [ -x "/usr/bin/node" ]; then
-    SYSTEM_NODE="/usr/bin/node"
-elif [[ "$OSTYPE" == "darwin"* ]] && [ -x "/usr/local/bin/node" ]; then
-    SYSTEM_NODE="/usr/local/bin/node"
-fi
-
 NODE_CURRENT="$(node --version 2>/dev/null || echo "v0.0.0")"
 NODE_INSTALLED_MAJOR="$(echo "$NODE_CURRENT" | sed 's/^v//' | cut -d'.' -f1)"
 
 if [ "$NODE_INSTALLED_MAJOR" -lt "$NODE_MAJOR" ]; then
-    # Active `node` is too old — check if the system-installed binary has the right version
-    if [ -n "$SYSTEM_NODE" ]; then
-        SYSTEM_NODE_VERSION="$("$SYSTEM_NODE" --version 2>/dev/null || echo "v0.0.0")"
-        SYSTEM_NODE_MAJOR="$(echo "$SYSTEM_NODE_VERSION" | sed 's/^v//' | cut -d'.' -f1)"
-        if [ "$SYSTEM_NODE_MAJOR" -ge "$NODE_MAJOR" ]; then
-            echo -e "${YELLOW}Warning: Node.js ${NODE_MAJOR} is installed at ${SYSTEM_NODE} ($SYSTEM_NODE_VERSION), but $NODE_CURRENT is the active version in PATH.${NC}"
-            if [ -n "$NVM_DIR" ]; then
-                echo "You appear to be using nvm. Run: nvm install ${NODE_MAJOR} && nvm alias default ${NODE_MAJOR}"
-            elif command -v fnm &> /dev/null; then
-                echo "You appear to be using fnm. Run: fnm install ${NODE_MAJOR} && fnm default ${NODE_MAJOR}"
-            elif command -v volta &> /dev/null; then
-                echo "You appear to be using volta. Run: volta install node@${NODE_MAJOR}"
-            fi
-        else
-            echo -e "${RED}Error: Node.js ${NODE_MAJOR} or higher is required but $NODE_CURRENT is active${NC}"
-            echo "Please install Node.js ${NODE_MAJOR} and ensure it is first in your PATH."
-            exit 1
-        fi
-    else
-        echo -e "${RED}Error: Node.js ${NODE_MAJOR} or higher is required but $NODE_CURRENT is active${NC}"
-        if [ -n "$NVM_DIR" ]; then
-            echo "You appear to be using nvm. Run: nvm install ${NODE_MAJOR} && nvm alias default ${NODE_MAJOR}"
-        elif command -v fnm &> /dev/null; then
-            echo "You appear to be using fnm. Run: fnm install ${NODE_MAJOR} && fnm default ${NODE_MAJOR}"
-        elif command -v volta &> /dev/null; then
-            echo "You appear to be using volta. Run: volta install node@${NODE_MAJOR}"
-        else
-            echo "Please install Node.js ${NODE_MAJOR} and ensure it is first in your PATH."
-        fi
-        exit 1
-    fi
+    echo -e "${RED}Error: Node.js ${NODE_MAJOR} or higher is required but $NODE_CURRENT is active${NC}"
+    print_vm_manual_command "$(detect_active_node_vm)"
+    exit 1
 fi
 
 DOTNET_TOOLS_PATH="$HOME/.dotnet/tools"
