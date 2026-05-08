@@ -95,7 +95,7 @@ try {
 
 if ($needsDotnetInstall) {
     Write-Host "Installing .NET SDK $DOTNET_SDK_MAJOR using winget..." -ForegroundColor Yellow
-    winget install Microsoft.DotNet.SDK.$DOTNET_SDK_MAJOR --silent --accept-source-agreements --accept-package-agreements --disable-interactivity
+    winget install Microsoft.DotNet.SDK.$DOTNET_SDK_MAJOR --source winget --silent --accept-source-agreements --accept-package-agreements --disable-interactivity
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Error: Failed to install .NET SDK using winget" -ForegroundColor Red
         return 1
@@ -142,7 +142,7 @@ try {
 
 if ($needsNodeInstall) {
     Write-Host "Installing Node.js $NODE_MAJOR using winget..." -ForegroundColor Yellow
-    winget install OpenJS.NodeJS.LTS --version $NODE_VERSION --silent --accept-source-agreements --accept-package-agreements --disable-interactivity
+    winget install OpenJS.NodeJS.LTS --version $NODE_VERSION --source winget --silent --accept-source-agreements --accept-package-agreements --disable-interactivity
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Error: Failed to install Node.js using winget" -ForegroundColor Red
         return 1
