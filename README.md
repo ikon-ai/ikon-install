@@ -4,7 +4,7 @@
 
 ### Windows
 
-Open PowerShell and run:
+Open Terminal (right click on Desktop and select `Open in Terminal`) and run:
 
 ```powershell
 Set-ExecutionPolicy Bypass -Scope Process -Force; iwr "https://ikonai.com/install.ps1" -useb | iex
