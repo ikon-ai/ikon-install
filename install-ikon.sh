@@ -1,0 +1,658 @@
+#!/usr/bin/env bash
+
+# bash <(curl -fsSL https://ikonai.com/install.sh)
+
+DOTNET_SDK_MAJOR="10"
+DOTNET_SDK_VERSION="10.0.400"
+NODE_MAJOR="24"
+NODE_VERSION="24.19.0"
+
+set -e
+
+RED='\033[0;31m'
+GREEN='\033[1;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+SKIP_CONFIRMATION=false
+if [[ "$CI" == "true" ]]; then
+    SKIP_CONFIRMATION=true
+fi
+for arg in "$@"; do
+    if [[ "$arg" == "--yes" ]] || [[ "$arg" == "-y" ]]; then
+        SKIP_CONFIRMATION=true
+        break
+    fi
+done
+
+if [[ "$SKIP_CONFIRMATION" != "true" ]]; then
+    echo
+    echo -e "${CYAN}====================================================================${NC}"
+    echo -e "${CYAN}              Ikon Tool Installation Script${NC}"
+    echo -e "${CYAN}====================================================================${NC}"
+    echo
+    echo -e "${YELLOW}This script will:${NC}"
+    echo -e "  1. Check for and install .NET SDK ${DOTNET_SDK_MAJOR} (if not present or outdated)"
+    echo -e "  2. Check for and install Node.js ${NODE_MAJOR} (if not present or outdated)"
+    echo -e "  3. Check for and install Git (if not present)"
+    echo -e "  4. Install the Ikon command-line tool"
+    echo -e "  5. Trust HTTPS development certificates for localhost"
+    echo
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        echo -e "${YELLOW}Installation methods (macOS):${NC}"
+        echo -e "  - Xcode Command Line Tools (for git)"
+        echo -e "  - Official .pkg installers (for .NET SDK and Node.js)"
+    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        echo -e "${YELLOW}Installation methods (Linux):${NC}"
+        echo -e "  - apt-get (if available)"
+        echo -e "  - Official .NET install script (fallback)"
+    fi
+    echo
+    echo -e "${YELLOW}Note: Administrator privileges (sudo) may be required for some installations.${NC}"
+    echo
+    
+    read -p "Do you want to continue? (y/n) " -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo -e "${YELLOW}Installation cancelled by user.${NC}"
+        exit 0
+    fi
+    echo
+fi
+
+print_dotnet_install_instructions() {
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        if command -v apt-get &> /dev/null; then
+            echo "Please install .NET SDK ${DOTNET_SDK_MAJOR} with following command:"
+            echo "sudo apt-get update && sudo apt-get install -y dotnet-sdk-${DOTNET_SDK_MAJOR}.0"
+            echo
+            echo "More instructions at: https://learn.microsoft.com/en-us/dotnet/core/install/linux?WT.mc_id=dotnet-35129-website"
+        else
+            echo "Please install .NET SDK ${DOTNET_SDK_MAJOR} - check instructions for your distribution at:"
+            echo "https://learn.microsoft.com/en-us/dotnet/core/install/linux?WT.mc_id=dotnet-35129-website"
+        fi
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        echo "Please download and install .NET SDK ${DOTNET_SDK_MAJOR} from:"
+        if [[ "$(uname -m)" == "arm64" ]]; then
+            echo "https://builds.dotnet.microsoft.com/dotnet/Sdk/${DOTNET_SDK_VERSION}/dotnet-sdk-${DOTNET_SDK_VERSION}-osx-arm64.pkg"
+        else
+            echo "https://builds.dotnet.microsoft.com/dotnet/Sdk/${DOTNET_SDK_VERSION}/dotnet-sdk-${DOTNET_SDK_VERSION}-osx-x64.pkg"
+        fi
+    else
+        echo "Please install .NET SDK ${DOTNET_SDK_MAJOR} from: https://dotnet.microsoft.com/en-us/download/dotnet/${DOTNET_SDK_MAJOR}.0"
+    fi
+    echo
+    echo "And then restart your terminal and run this script again!"
+}
+
+install_dotnet_via_script() {
+    local shell_rc="$1"
+
+    echo -e "${YELLOW}Falling back to official .NET install script...${NC}"
+
+    local dotnet_root="$HOME/.dotnet"
+    mkdir -p "$dotnet_root"
+
+    local install_script
+    install_script="$(mktemp)"
+
+    if ! curl -L https://dot.net/v1/dotnet-install.sh -o "$install_script"; then
+        echo -e "${RED}Failed to download .NET install script${NC}"
+        print_dotnet_install_instructions
+        return 1
+    fi
+
+    chmod +x "$install_script"
+
+    if ! "$install_script" --channel "${DOTNET_SDK_MAJOR}.0" --install-dir "$dotnet_root"; then
+        echo -e "${RED}Failed to install .NET SDK using official install script${NC}"
+        print_dotnet_install_instructions
+        return 1
+    fi
+
+    export PATH="$dotnet_root:$PATH"
+    export DOTNET_ROOT="$dotnet_root"
+
+    echo 'export DOTNET_ROOT="$HOME/.dotnet"' >> "$shell_rc"
+    echo 'export PATH="$PATH:$HOME/.dotnet"' >> "$shell_rc"
+
+    echo -e "${GREEN}.NET SDK ${DOTNET_SDK_MAJOR} has been installed using the official install script!${NC}"
+    return 0
+}
+
+install_dotnet_if_needed() {
+    local shell_rc="$1"
+    local needs_install=false
+    
+    # Check if dotnet exists and get version
+    if command -v dotnet &> /dev/null; then
+        DOTNET_VERSION="$(dotnet --version 2>/dev/null || echo "0.0.0")"
+        MAJOR_VERSION="$(echo "$DOTNET_VERSION" | cut -d'.' -f1)"
+        
+        if [ "$MAJOR_VERSION" -lt "$DOTNET_SDK_MAJOR" ]; then
+            echo -e "${YELLOW}.NET SDK version $DOTNET_VERSION found, but version ${DOTNET_SDK_MAJOR} or higher is required${NC}"
+            needs_install=true
+        else
+            echo -e "${GREEN}.NET SDK $DOTNET_VERSION is already installed${NC}"
+            return 0
+        fi
+    else
+        needs_install=true
+    fi
+    
+    if [[ "$needs_install" == "true" ]]; then
+        if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+            if command -v apt-get &> /dev/null; then
+                echo -e "${YELLOW}Installing .NET SDK ${DOTNET_SDK_MAJOR}...${NC}"
+
+                if sudo apt-get update && sudo apt-get install -y dotnet-sdk-${DOTNET_SDK_MAJOR}.0; then
+                    echo -e "${GREEN}.NET SDK ${DOTNET_SDK_MAJOR} has been installed successfully!${NC}"
+
+                    if ! command -v dotnet &> /dev/null; then
+                        echo -e "${YELLOW}Please restart your terminal and run this script again to complete the Ikon tool installation.${NC}"
+                        return 1
+                    fi
+                else
+                    echo -e "${YELLOW}Failed to install .NET SDK via apt-get, trying official install script...${NC}"
+                    if ! install_dotnet_via_script "$shell_rc"; then
+                        return 1
+                    fi
+                fi
+            else
+                echo -e "${YELLOW}apt-get not available, trying official install script...${NC}"
+                if ! install_dotnet_via_script "$shell_rc"; then
+                    return 1
+                fi
+            fi
+        elif [[ "$OSTYPE" == "darwin"* ]]; then
+            echo -e "${YELLOW}Installing .NET SDK ${DOTNET_SDK_MAJOR} via official installer...${NC}"
+
+            local dotnet_pkg_url
+            if [[ "$(uname -m)" == "arm64" ]]; then
+                dotnet_pkg_url="https://builds.dotnet.microsoft.com/dotnet/Sdk/${DOTNET_SDK_VERSION}/dotnet-sdk-${DOTNET_SDK_VERSION}-osx-arm64.pkg"
+            else
+                dotnet_pkg_url="https://builds.dotnet.microsoft.com/dotnet/Sdk/${DOTNET_SDK_VERSION}/dotnet-sdk-${DOTNET_SDK_VERSION}-osx-x64.pkg"
+            fi
+
+            local dotnet_pkg="/tmp/dotnet-sdk.pkg"
+            echo -e "${YELLOW}Downloading .NET SDK installer...${NC}"
+            if ! curl -fsSL -o "$dotnet_pkg" "$dotnet_pkg_url"; then
+                echo -e "${RED}Failed to download .NET SDK installer${NC}"
+                print_dotnet_install_instructions
+                return 1
+            fi
+
+            echo -e "${YELLOW}Installing .NET SDK (requires administrator privileges)...${NC}"
+            if sudo installer -pkg "$dotnet_pkg" -target /; then
+                echo -e "${GREEN}.NET SDK has been installed successfully!${NC}"
+                rm -f "$dotnet_pkg"
+
+                # Add dotnet to PATH for current session (pkg installs to /usr/local/share/dotnet)
+                export PATH="/usr/local/share/dotnet:$PATH"
+                export DOTNET_ROOT="/usr/local/share/dotnet"
+
+                if ! command -v dotnet &> /dev/null; then
+                    echo -e "${YELLOW}Please restart your terminal and run this script again to complete the Ikon tool installation.${NC}"
+                    return 1
+                fi
+            else
+                echo -e "${RED}Failed to install .NET SDK${NC}"
+                rm -f "$dotnet_pkg"
+                print_dotnet_install_instructions
+                return 1
+            fi
+        else
+            # Other OS
+            echo -e "${RED}.NET SDK is not installed${NC}"
+            print_dotnet_install_instructions
+            return 1
+        fi
+    fi
+    return 0
+}
+
+_resolve_path() {
+    local p="$1"
+    if [ -z "$p" ]; then
+        return 0
+    fi
+    if readlink -f "$p" >/dev/null 2>&1; then
+        readlink -f "$p"
+    elif command -v perl >/dev/null 2>&1; then
+        perl -MCwd=abs_path -le 'print abs_path(shift)' "$p"
+    else
+        (cd "$(dirname "$p")" 2>/dev/null && printf '%s/%s\n' "$(pwd -P)" "$(basename "$p")")
+    fi
+}
+
+# Prints nvm|fnm|volta|"" based on the realpath of the active `node` binary
+detect_active_node_vm() {
+    if ! command -v node >/dev/null 2>&1; then
+        return 0
+    fi
+    local node_path
+    node_path="$(command -v node)"
+    local real_path
+    real_path="$(_resolve_path "$node_path")"
+    case "$real_path" in
+        */.nvm/versions/node/*) echo "nvm" ;;
+        */.fnm/node-versions/*|*/.local/share/fnm/node-versions/*|*/.local/state/fnm_multishells/*) echo "fnm" ;;
+        */.volta/tools/image/node/*|*/.volta/bin/*) echo "volta" ;;
+        *) echo "" ;;
+    esac
+}
+
+# Prints nvm|fnm|volta|"" for when no node is installed yet but a VM is available
+detect_available_vm() {
+    if [ -n "$NVM_DIR" ] && [ -s "$NVM_DIR/nvm.sh" ]; then
+        echo "nvm"
+    elif [ -s "$HOME/.nvm/nvm.sh" ]; then
+        echo "nvm"
+    elif command -v fnm >/dev/null 2>&1; then
+        echo "fnm"
+    elif command -v volta >/dev/null 2>&1; then
+        echo "volta"
+    else
+        echo ""
+    fi
+}
+
+install_node_via_nvm() {
+    echo -e "${YELLOW}Installing Node.js ${NODE_MAJOR} via nvm...${NC}"
+    export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+    if [ ! -s "$NVM_DIR/nvm.sh" ]; then
+        echo "nvm init script not found at $NVM_DIR/nvm.sh" >&2
+        return 1
+    fi
+    # Source in the current shell so the new node is active for later steps.
+    # Disable `set -e` around sourcing: nvm.sh has many internal conditionals
+    # that can exit-on-error under a strict shell.
+    set +e
+    # shellcheck disable=SC1091
+    \. "$NVM_DIR/nvm.sh"
+    nvm install "${NODE_MAJOR}" && nvm alias default "${NODE_MAJOR}" && nvm use default
+    local rc=$?
+    set -e
+    if [ $rc -eq 0 ]; then
+        _INSTALLED_NODE_BIN_DIR="$(dirname "$(command -v node 2>/dev/null)")"
+    fi
+    return $rc
+}
+
+install_node_via_fnm() {
+    echo -e "${YELLOW}Installing Node.js ${NODE_MAJOR} via fnm...${NC}"
+    if ! command -v fnm >/dev/null 2>&1; then
+        echo "fnm not found in PATH" >&2
+        return 1
+    fi
+    set +e
+    eval "$(fnm env --shell bash)"
+    fnm install "${NODE_MAJOR}" && fnm default "${NODE_MAJOR}" && fnm use "${NODE_MAJOR}"
+    local rc=$?
+    set -e
+    if [ $rc -eq 0 ]; then
+        # fnm's active node lives in a per-shell multishell dir that disappears
+        # when the shell exits. Resolve the stable installation path instead so
+        # it can be written to $GITHUB_PATH and survive into the next step.
+        local version
+        version="$(fnm current 2>/dev/null || echo "")"
+        local fnm_root="${FNM_DIR:-$HOME/.local/share/fnm}"
+        if [ -n "$version" ] && [ -d "$fnm_root/node-versions/$version/installation/bin" ]; then
+            _INSTALLED_NODE_BIN_DIR="$fnm_root/node-versions/$version/installation/bin"
+        else
+            _INSTALLED_NODE_BIN_DIR="$(dirname "$(command -v node 2>/dev/null)")"
+        fi
+    fi
+    return $rc
+}
+
+install_node_via_volta() {
+    echo -e "${YELLOW}Installing Node.js ${NODE_MAJOR} via volta...${NC}"
+    if ! command -v volta >/dev/null 2>&1; then
+        echo -e "${RED}volta not found in PATH${NC}"
+        return 1
+    fi
+    if volta install "node@${NODE_MAJOR}"; then
+        _INSTALLED_NODE_BIN_DIR="${VOLTA_HOME:-$HOME/.volta}/bin"
+        return 0
+    fi
+    return 1
+}
+
+install_node_via_system() {
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        if command -v apt-get &> /dev/null; then
+            echo -e "${YELLOW}Installing Node.js ${NODE_MAJOR}...${NC}"
+            if curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | sudo -E bash - && \
+               sudo apt-get install -y nodejs; then
+                hash -r
+                echo -e "${GREEN}Node.js installed successfully!${NC}"
+                _INSTALLED_NODE_BIN_DIR="/usr/bin"
+                return 0
+            else
+                echo -e "${RED}Failed to install Node.js${NC}"
+                return 1
+            fi
+        else
+            echo -e "${RED}Node.js is not installed. Please install Node.js ${NODE_MAJOR} or higher for your distribution.${NC}"
+            return 1
+        fi
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        echo -e "${YELLOW}Installing Node.js ${NODE_MAJOR} via official installer...${NC}"
+
+        local node_pkg_url="https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}.pkg"
+        local node_pkg="/tmp/node.pkg"
+
+        echo -e "${YELLOW}Downloading Node.js installer...${NC}"
+        if ! curl -fsSL -o "$node_pkg" "$node_pkg_url"; then
+            echo -e "${RED}Failed to download Node.js installer${NC}"
+            echo -e "${YELLOW}Please download and install Node.js ${NODE_MAJOR} from: https://nodejs.org/${NC}"
+            return 1
+        fi
+
+        echo -e "${YELLOW}Installing Node.js (requires administrator privileges)...${NC}"
+        if sudo installer -pkg "$node_pkg" -target /; then
+            hash -r
+            echo -e "${GREEN}Node.js installed successfully!${NC}"
+            rm -f "$node_pkg"
+            _INSTALLED_NODE_BIN_DIR="/usr/local/bin"
+            return 0
+        else
+            echo -e "${RED}Failed to install Node.js${NC}"
+            rm -f "$node_pkg"
+            echo -e "${YELLOW}Please download and install Node.js ${NODE_MAJOR} from: https://nodejs.org/${NC}"
+            return 1
+        fi
+    else
+        echo -e "${RED}Node.js is not installed. Please install Node.js ${NODE_MAJOR} or higher for your OS.${NC}"
+        return 1
+    fi
+}
+
+print_vm_manual_command() {
+    local vm="$1"
+    case "$vm" in
+        nvm)   echo -e "${YELLOW}Run manually: nvm install ${NODE_MAJOR} && nvm alias default ${NODE_MAJOR}${NC}" ;;
+        fnm)   echo -e "${YELLOW}Run manually: fnm install ${NODE_MAJOR} && fnm default ${NODE_MAJOR}${NC}" ;;
+        volta) echo -e "${YELLOW}Run manually: volta install node@${NODE_MAJOR}${NC}" ;;
+    esac
+}
+
+install_node_if_needed() {
+    local shell_rc="$1"
+
+    if command -v node &> /dev/null; then
+        local node_current
+        node_current="$(node --version 2>/dev/null || echo "v0.0.0")"
+        MAJOR_VERSION="$(echo "$node_current" | sed 's/^v//' | cut -d'.' -f1)"
+
+        if [ "$MAJOR_VERSION" -ge "$NODE_MAJOR" ]; then
+            echo -e "${GREEN}Node.js $node_current is already installed${NC}"
+            return 0
+        fi
+        echo -e "${YELLOW}Node.js version $node_current found, but version ${NODE_MAJOR} or higher is required${NC}"
+    fi
+
+    local vm
+    vm="$(detect_active_node_vm)"
+    if [ -z "$vm" ]; then
+        vm="$(detect_available_vm)"
+    fi
+
+    _INSTALLED_NODE_BIN_DIR=""
+    if [ -n "$vm" ]; then
+        case "$vm" in
+            nvm)   install_node_via_nvm ;;
+            fnm)   install_node_via_fnm ;;
+            volta) install_node_via_volta ;;
+        esac
+        local vm_status=$?
+        hash -r
+        if [ $vm_status -ne 0 ]; then
+            echo -e "${RED}Failed to install Node.js via ${vm}${NC}"
+            print_vm_manual_command "$vm"
+            return 1
+        fi
+        echo -e "${GREEN}Node.js installed successfully via ${vm}!${NC}"
+    else
+        install_node_via_system || return 1
+    fi
+
+    # Ensure the newly installed node takes precedence for the rest of this
+    # script. Without this, a pre-existing node (from homebrew, the hosted
+    # toolcache on CI, /usr/local/bin shadowed by /opt/homebrew/bin, etc.)
+    # can still win and make the verification below fail.
+    if [ -n "$_INSTALLED_NODE_BIN_DIR" ] && [ -d "$_INSTALLED_NODE_BIN_DIR" ]; then
+        export PATH="$_INSTALLED_NODE_BIN_DIR:$PATH"
+        hash -r
+    fi
+
+    local post_install_version
+    post_install_version="$(node --version 2>/dev/null || echo "v0.0.0")"
+    local post_install_major
+    post_install_major="$(echo "$post_install_version" | sed 's/^v//' | cut -d'.' -f1)"
+    if [ "$post_install_major" -lt "$NODE_MAJOR" ]; then
+        echo -e "${RED}Error: Node.js ${NODE_MAJOR} installation completed but $post_install_version is active${NC}"
+        return 1
+    fi
+
+    # Set IKON_INSTALL_REPORT to a file path to have the node install location
+    # written there, for callers that prepend it to PATH themselves.
+    if [ -n "${IKON_INSTALL_REPORT:-}" ] && [ -n "$_INSTALLED_NODE_BIN_DIR" ]; then
+        echo "NODE_BIN_DIR=$_INSTALLED_NODE_BIN_DIR" >> "$IKON_INSTALL_REPORT"
+    fi
+
+    return 0
+}
+
+install_git_if_needed() {
+    if ! git --version &> /dev/null; then
+        if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+            if command -v apt-get &> /dev/null; then
+                echo -e "${YELLOW}Installing git...${NC}"
+                if sudo apt-get update && sudo apt-get install -y git; then
+                    echo -e "${GREEN}git installed successfully!${NC}"
+                else
+                    echo -e "${RED}Failed to install git${NC}"
+                    return 1
+                fi
+            else
+                echo -e "${RED}git is not installed. Please install git for your distribution.${NC}"
+                return 1
+            fi
+        elif [[ "$OSTYPE" == "darwin"* ]]; then
+            echo -e "${YELLOW}Installing Xcode Command Line Tools (includes git)...${NC}"
+            echo -e "${YELLOW}A dialog will appear - please click 'Install' to continue.${NC}"
+
+            xcode-select --install 2>/dev/null || true
+
+            # Wait for git to become available (polling)
+            echo -e "${YELLOW}Waiting for installation to complete...${NC}"
+            local max_wait=600  # 10 minutes max
+            local waited=0
+            while ! git --version &> /dev/null; do
+                if [ $waited -ge $max_wait ]; then
+                    echo -e "${RED}Timed out waiting for Xcode Command Line Tools installation.${NC}"
+                    echo -e "${YELLOW}Please complete the installation manually and run this script again.${NC}"
+                    return 1
+                fi
+                sleep 5
+                waited=$((waited + 5))
+            done
+            echo -e "${GREEN}git installed successfully!${NC}"
+        else
+            echo -e "${RED}git is not installed. Please install git for your OS.${NC}"
+            return 1
+        fi
+    else
+        echo -e "${GREEN}git is already installed${NC}"
+    fi
+    return 0
+}
+
+detect_shell_rc() {
+    # Determine shell config file for adding PATH changes
+    local current_shell="${SHELL##*/}"
+    local shell_rc=""
+
+    case "$current_shell" in
+        zsh)
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                shell_rc="$HOME/.zprofile"
+            else
+                shell_rc="$HOME/.zshrc"
+            fi
+            ;;
+        bash)
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                if [[ -f "$HOME/.bash_profile" ]]; then
+                    shell_rc="$HOME/.bash_profile"
+                else
+                    shell_rc="$HOME/.bashrc"
+                fi
+            else
+                shell_rc="$HOME/.bashrc"
+            fi
+            ;;
+        *)
+            # Fallback: try detected versions, then .profile
+            if [[ -n "$ZSH_VERSION" ]]; then
+                if [[ "$OSTYPE" == "darwin"* ]]; then
+                    shell_rc="$HOME/.zprofile"
+                else
+                    shell_rc="$HOME/.zshrc"
+                fi
+            elif [[ -n "$BASH_VERSION" ]]; then
+                shell_rc="$HOME/.bashrc"
+            else
+                shell_rc="$HOME/.profile"
+            fi
+            ;;
+    esac
+
+    mkdir -p "$(dirname "$shell_rc")" 2>/dev/null || true
+    touch "$shell_rc" 2>/dev/null || true
+    echo "$shell_rc"
+}
+
+echo "Checking pre-requisites for Ikon tool installation..."
+
+SHELL_RC="$(detect_shell_rc)"
+SHELL_NAME="${SHELL##*/}"
+
+install_dotnet_if_needed "$SHELL_RC" || exit 1
+install_node_if_needed "$SHELL_RC" || exit 1
+install_git_if_needed || exit 1
+
+# Check dotnet version (final verification after installation)
+DOTNET_VERSION="$(dotnet --version)"
+MAJOR_VERSION="$(echo "$DOTNET_VERSION" | cut -d'.' -f1)"
+
+if [ "$MAJOR_VERSION" -lt "$DOTNET_SDK_MAJOR" ]; then
+    echo -e "${RED}Error: .NET SDK version ${DOTNET_SDK_MAJOR} or higher is required${NC}"
+    echo "Current version: $DOTNET_VERSION"
+    print_dotnet_install_instructions
+    exit 1
+fi
+
+# Check node version (final verification after installation)
+NODE_CURRENT="$(node --version 2>/dev/null || echo "v0.0.0")"
+NODE_INSTALLED_MAJOR="$(echo "$NODE_CURRENT" | sed 's/^v//' | cut -d'.' -f1)"
+
+if [ "$NODE_INSTALLED_MAJOR" -lt "$NODE_MAJOR" ]; then
+    echo -e "${RED}Error: Node.js ${NODE_MAJOR} or higher is required but $NODE_CURRENT is active${NC}"
+    print_vm_manual_command "$(detect_active_node_vm)"
+    exit 1
+fi
+
+DOTNET_TOOLS_PATH="$HOME/.dotnet/tools"
+
+# Ensure tools are available inside this script
+export PATH="$PATH:$DOTNET_TOOLS_PATH"
+
+# Silently uninstall other ikon tool packages if they exist
+dotnet tool uninstall IkonTool --global >/dev/null 2>&1 || true
+dotnet tool uninstall ikon-internal --global >/dev/null 2>&1 || true
+
+# Own config, because a --global install still inherits NuGet settings from the current directory:
+# a repository declaring packageSourceMapping would make NuGet reject --add-source outright.
+NUGET_CONFIG_DIR="$(mktemp -d)"
+NUGET_CONFIG="$NUGET_CONFIG_DIR/NuGet.Config"
+cat > "$NUGET_CONFIG" <<'NUGET_CONFIG_EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <clear />
+    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
+  </packageSources>
+</configuration>
+NUGET_CONFIG_EOF
+
+echo "Installing Ikon tool..."
+if ! dotnet tool install ikon --global --no-http-cache --configfile "$NUGET_CONFIG"; then
+    rm -rf "$NUGET_CONFIG_DIR"
+    echo -e "${RED}Error: Failed to install Ikon tool${NC}"
+    exit 1
+fi
+
+rm -rf "$NUGET_CONFIG_DIR"
+
+# Persist tools path for future terminals
+if ! grep -q '\$HOME/.dotnet/tools' "$SHELL_RC" 2>/dev/null; then
+    echo "Adding dotnet tools path $DOTNET_TOOLS_PATH to $SHELL_RC for future sessions"
+    echo 'export PATH="$PATH:$HOME/.dotnet/tools"' >> "$SHELL_RC"
+fi
+
+echo "Resetting Ikon tool data..."
+IKON_RESET_CONFIRM=true ikon --reset
+
+echo "Testing Ikon tool installation..."
+if ! ikon version; then
+    echo -e "${RED}Error: Ikon tool has not been installed correctly${NC}"
+    exit 1
+fi
+
+echo "Trusting HTTPS development certificates for localhost..."
+if [[ "$CI" == "true" ]]; then
+    if ! dotnet dev-certs https; then
+        echo -e "${YELLOW}Warning: Failed to generate HTTPS development certificates${NC}"
+    fi
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+    if ! dotnet dev-certs https --trust; then
+        echo -e "${YELLOW}Warning: Failed to trust HTTPS development certificates${NC}"
+    fi
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    echo "Generating HTTPS development certificate (per-user)..."
+    if ! dotnet dev-certs https; then
+        echo -e "${YELLOW}Warning: Failed to generate HTTPS development certificates${NC}"
+    else
+        tmp_cert="$(mktemp)"
+        if dotnet dev-certs https -ep "$tmp_cert" --format PEM; then
+            echo "Installing HTTPS development certificate into Ubuntu trust store (requires sudo)..."
+            if sudo mkdir -p /usr/local/share/ca-certificates/aspnet && \
+               sudo cp "$tmp_cert" /usr/local/share/ca-certificates/aspnet/ikon-https-dev.crt && \
+               sudo update-ca-certificates; then
+                echo -e "${GREEN}HTTPS development certificate trusted by system CA store.${NC}"
+            else
+                echo -e "${YELLOW}Warning: Failed to install HTTPS development certificate into system trust store${NC}"
+            fi
+        else
+            echo -e "${YELLOW}Warning: Failed to export HTTPS development certificate for trust installation${NC}"
+        fi
+        rm -f "$tmp_cert"
+    fi
+else
+    echo -e "${YELLOW}Warning: Unsupported OS for HTTPS certificate trust${NC}"
+fi
+
+echo
+echo -e "${GREEN}Ikon tool installation completed.${NC}"
+echo
+echo "IMPORTANT:"
+echo "  1) Close this terminal window (or log out) and open a NEW terminal."
+echo "  2) In the new terminal, run the following command to sign in:"
+echo
+echo -e "     ${YELLOW}ikon login${NC}"
+echo
+echo "The Ikon tool will only work after you have opened a new terminal session."
