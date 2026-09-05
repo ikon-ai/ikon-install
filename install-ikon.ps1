@@ -1,0 +1,316 @@
+# Set-ExecutionPolicy Bypass -Scope Process -Force; iwr "https://ikonai.com/install.ps1" -useb | iex
+
+$ErrorActionPreference = "Stop"
+
+$DOTNET_SDK_MAJOR = 10
+$NODE_MAJOR = 24
+$NODE_VERSION = "24.19.0"
+
+$skipConfirmation = $false
+if ($env:CI -eq "true") {
+    $skipConfirmation = $true
+}
+foreach ($arg in $args) {
+    if ($arg -eq "--yes" -or $arg -eq "-y") {
+        $skipConfirmation = $true
+        break
+    }
+}
+
+if (-not $skipConfirmation) {
+    Write-Host ""
+    Write-Host "====================================================================" -ForegroundColor Cyan
+    Write-Host "              Ikon Tool Installation Script" -ForegroundColor Cyan
+    Write-Host "====================================================================" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "This script will:" -ForegroundColor Yellow
+    Write-Host "  1. Check for and install .NET SDK $DOTNET_SDK_MAJOR (if not present or outdated)" -ForegroundColor White
+    Write-Host "  2. Check for and install Node.js $NODE_MAJOR (if not present or outdated)" -ForegroundColor White
+    Write-Host "  3. Check for and install Git (if not present)" -ForegroundColor White
+    Write-Host "  4. Install the Ikon command-line tool" -ForegroundColor White
+    Write-Host "  5. Trust HTTPS development certificates for localhost" -ForegroundColor White
+    Write-Host ""
+    Write-Host "Installation method: winget (Windows Package Manager)" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Note: Administrator privileges may be required for some installations." -ForegroundColor Yellow
+    Write-Host ""
+    
+    $response = Read-Host "Do you want to continue? (y/n)"
+    if ($response -notmatch '^[Yy]') {
+        Write-Host "Installation cancelled by user." -ForegroundColor Yellow
+        return 1
+    }
+    Write-Host ""
+}
+
+function Refresh-EnvironmentPath {
+    $machinePath = [System.Environment]::GetEnvironmentVariable("Path","Machine")
+    $userPath = [System.Environment]::GetEnvironmentVariable("Path","User")
+    $env:Path = if ($machinePath -and $userPath) { 
+        "$machinePath;$userPath" 
+    } elseif ($machinePath) { 
+        $machinePath 
+    } elseif ($userPath) { 
+        $userPath 
+    } else { 
+        $env:Path 
+    }
+}
+
+try {
+    $wingetCheck = winget --version 2>$null
+    if (-not $wingetCheck) {
+        throw "winget not found"
+    }
+} catch {
+    Write-Host "Error: winget (Windows Package Manager) is not available" -ForegroundColor Red
+    Write-Host "Please install winget from the Microsoft Store (App Installer) or Windows 11" -ForegroundColor Yellow
+    return 1
+}
+
+Write-Host "Checking pre-requisites for Ikon tool installation..."
+
+$needsDotnetInstall = $false
+$dotnetVersion = $null
+
+try {
+    $dotnetVersion = dotnet --version 2>$null
+    if (-not $dotnetVersion) {
+        throw "dotnet command not found"
+    }
+    
+    $majorVersion = [int]($dotnetVersion.Split('.')[0])
+    if ($majorVersion -lt $DOTNET_SDK_MAJOR) {
+        Write-Host ".NET SDK version $dotnetVersion found, but version $DOTNET_SDK_MAJOR or higher is required" -ForegroundColor Yellow
+        $needsDotnetInstall = $true
+    } else {
+        Write-Host ".NET SDK $dotnetVersion found" -ForegroundColor DarkGreen
+    }
+} catch {
+    Write-Host ".NET SDK is not installed." -ForegroundColor Yellow
+    $needsDotnetInstall = $true
+}
+
+if ($needsDotnetInstall) {
+    Write-Host "Installing .NET SDK $DOTNET_SDK_MAJOR using winget..." -ForegroundColor Yellow
+    winget install Microsoft.DotNet.SDK.$DOTNET_SDK_MAJOR --source winget --silent --accept-source-agreements --accept-package-agreements --disable-interactivity
+    # winget prints nothing of its own on some failures, so its exit code is all there is to go
+    # on — a CI run lost a whole diagnosis to a bare "Failed to install Node.js using winget".
+    # Read straight from $LASTEXITCODE rather than captured: assigning the command output would
+    # hold back the lines winget does print until it is finished.
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Error: Failed to install .NET SDK using winget (exit code $LASTEXITCODE)" -ForegroundColor Red
+        return 1
+    }
+    Write-Host ".NET SDK $DOTNET_SDK_MAJOR has been installed successfully!" -ForegroundColor Green
+    Refresh-EnvironmentPath
+    
+    try {
+        $dotnetVersion = dotnet --version 2>$null
+        if (-not $dotnetVersion) {
+            throw "dotnet command still not available"
+        }
+        Write-Host ".NET SDK $dotnetVersion found" -ForegroundColor DarkGreen
+    } catch {
+        Write-Host "Please restart your terminal and run this script again to complete the Ikon tool installation." -ForegroundColor Yellow
+        Write-Host "If that doesn't help, try restarting your machine before running the script again." -ForegroundColor Yellow
+        Read-Host "Press Enter to exit"
+        return 0
+    }
+}
+
+$needsNodeInstall = $false
+$nodeVersion = $null
+
+try {
+    $nodeVersion = node --version 2>$null
+    if (-not $nodeVersion) {
+        throw "node command not found"
+    }
+    
+    $majorVersion = [int]($nodeVersion.TrimStart('v').Split('.')[0])
+    if ($majorVersion -lt $NODE_MAJOR) {
+        Write-Host "Node.js version $nodeVersion found, but version $NODE_MAJOR or higher is required" -ForegroundColor Yellow
+        $needsNodeInstall = $true
+    } else {
+        Write-Host "Node.js $nodeVersion found" -ForegroundColor DarkGreen
+    }
+} catch {
+    Write-Host "Node.js is not installed." -ForegroundColor Yellow
+    $needsNodeInstall = $true
+}
+
+if ($needsNodeInstall) {
+    Write-Host "Installing Node.js $NODE_MAJOR using winget..." -ForegroundColor Yellow
+    winget install OpenJS.NodeJS.LTS --version $NODE_VERSION --source winget --silent --accept-source-agreements --accept-package-agreements --disable-interactivity
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Error: Failed to install Node.js using winget (exit code $LASTEXITCODE)" -ForegroundColor Red
+        return 1
+    }
+    Write-Host "Node.js has been installed successfully!" -ForegroundColor Green
+    Refresh-EnvironmentPath
+    
+    try {
+        $nodeVersion = node --version 2>$null
+        if (-not $nodeVersion) {
+            throw "node command still not available"
+        }
+        $installedMajor = [int]($nodeVersion.TrimStart('v').Split('.')[0])
+        if ($installedMajor -lt $NODE_MAJOR) {
+            Write-Host "Error: Node.js $NODE_MAJOR or higher is required but $nodeVersion is active" -ForegroundColor Red
+            Write-Host "Please ensure Node.js $NODE_MAJOR or higher is first in your PATH and run this script again." -ForegroundColor Yellow
+            return 1
+        }
+        Write-Host "Node.js $nodeVersion found" -ForegroundColor DarkGreen
+    } catch {
+        Write-Host "Please restart your terminal and run this script again to complete the installation." -ForegroundColor Yellow
+        Write-Host "If that doesn't help, try restarting your machine before running the script again." -ForegroundColor Yellow
+        Read-Host "Press Enter to exit"
+        return 0
+    }
+}
+
+try {
+    $nodeVersion = node --version 2>$null
+    if (-not $nodeVersion) {
+        throw "node command not found"
+    }
+    $nodeMajor = [int]($nodeVersion.TrimStart('v').Split('.')[0])
+    if ($nodeMajor -lt $NODE_MAJOR) {
+        Write-Host "Error: Node.js $NODE_MAJOR or higher is required but $nodeVersion is active" -ForegroundColor Red
+        Write-Host "Please install Node.js $NODE_MAJOR and ensure it is first in your PATH." -ForegroundColor Yellow
+        return 1
+    }
+} catch {
+    Write-Host "Error: Node.js is not available. Please install Node.js $NODE_MAJOR or higher." -ForegroundColor Red
+    return 1
+}
+
+try {
+    $gitVersion = git --version 2>$null
+    if (-not $gitVersion) {
+        throw "git command not found"
+    }
+    Write-Host "Git $gitVersion found" -ForegroundColor DarkGreen
+} catch {
+    Write-Host "Git is not installed. Installing..." -ForegroundColor Yellow
+    Write-Host "Installing Git using winget..." -ForegroundColor Yellow
+    winget install --id Git.Git -e --source winget --silent --accept-source-agreements --accept-package-agreements --disable-interactivity
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Error: Failed to install Git using winget (exit code $LASTEXITCODE)" -ForegroundColor Red
+        return 1
+    }
+    Write-Host "Git has been installed successfully!" -ForegroundColor Green
+    Refresh-EnvironmentPath
+    
+    try {
+        $null = git --version 2>$null
+        if (-not $?) {
+            throw "git command still not available"
+        }
+    } catch {
+        Write-Host "Please restart your terminal and run this script again to complete the installation." -ForegroundColor Yellow
+        Write-Host "If that doesn't help, try restarting your machine before running the script again." -ForegroundColor Yellow
+        Read-Host "Press Enter to exit"
+        return 0
+    }
+}
+
+# Older package names, uninstalled silently if present. One try each: under "Stop", the first
+# package's "not installed" line on stderr ends the block before the second uninstall runs.
+try {
+    dotnet tool uninstall IkonTool -g 2>&1 | Out-Null
+} catch {
+}
+try {
+    dotnet tool uninstall ikon-internal -g 2>&1 | Out-Null
+} catch {
+}
+
+# Own config, because a -g install still inherits NuGet settings from the current directory:
+# a repository declaring packageSourceMapping would make NuGet reject --add-source outright.
+$nugetConfigDir = Join-Path ([System.IO.Path]::GetTempPath()) ("ikon-nuget-" + [System.Guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path $nugetConfigDir -Force | Out-Null
+$nugetConfig = Join-Path $nugetConfigDir "NuGet.Config"
+
+@'
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <clear />
+    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
+  </packageSources>
+</configuration>
+'@ | Out-File -FilePath $nugetConfig -Encoding utf8
+
+# 'update' rather than 'install', because re-running this script on a machine that already has the
+# tool is the common case and 'install' leaves the old version in place while reporting success
+Write-Host "Installing Ikon tool..."
+
+try {
+    dotnet tool update ikon -g --configfile $nugetConfig
+    if ($LASTEXITCODE -ne 0) {
+        # An SDK that refuses to update a tool it does not have yet
+        dotnet tool install ikon -g --configfile $nugetConfig
+        if ($LASTEXITCODE -ne 0) {
+            throw "dotnet tool install failed with exit code $LASTEXITCODE"
+        }
+    }
+} catch {
+    Write-Host "Error: Failed to install Ikon tool" -ForegroundColor Red
+    Write-Host $_.Exception.Message
+    return 1
+} finally {
+    Remove-Item -LiteralPath $nugetConfigDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+try {
+    $ikonPath = Get-Command ikon -ErrorAction Stop
+} catch {
+    Write-Host "Error: ikon command not found in PATH" -ForegroundColor Red
+    Write-Host "Please restart your terminal and try again." -ForegroundColor Yellow
+    Write-Host "If that doesn't help, try restarting your machine before running the script again." -ForegroundColor Yellow
+    return 1
+}
+
+# Repair, not reset: this runs on every re-install, and reset would delete the login of everyone who
+# ran the script to fix something else. Non-fatal - the tool is installed either way, and 'ikon login'
+# installs the packages a failed repair could not download.
+Write-Host "Repairing Ikon tool packages..."
+ikon --repair
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Warning: Could not repair the Ikon tool packages; 'ikon login' will install them" -ForegroundColor Yellow
+}
+
+Write-Host "Testing Ikon tool installation..."
+
+try {
+    ikon version
+    if ($LASTEXITCODE -ne 0) {
+        throw "ikon version command failed with exit code $LASTEXITCODE"
+    }
+} catch {
+    Write-Host "Error: Ikon tool has not been installed correctly" -ForegroundColor Red
+    Write-Host $_.Exception.Message
+    return 1
+}
+
+Write-Host "Trusting HTTPS development certificates for localhost..."
+
+try {
+    if ($env:CI -eq "true") {
+        dotnet dev-certs https
+    } else {
+        dotnet dev-certs https --trust
+    }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Warning: Failed to trust HTTPS development certificates" -ForegroundColor Yellow
+    }
+} catch {
+    Write-Host "Warning: Failed to trust HTTPS development certificates" -ForegroundColor Yellow
+    Write-Host $_.Exception.Message
+}
+
+Write-Host ""
+Write-Host "Next step, to login to the Ikon backend, run:"
+Write-Host "ikon login" -ForegroundColor Yellow
